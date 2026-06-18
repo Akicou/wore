@@ -2,6 +2,10 @@ name: Release (Windows)
 
 # Builds a native Windows installer on version tags.
 # Create a release: git tag v0.1.0 && git push origin v0.1.0
+#
+# Also triggers a managed build on Nayhein Builder (build.nayhein.com) so the
+# build shows up in the Builder dashboard with downloadable artifacts.
+# The API key lives in the `NAYHEIN_BUILDER_API_KEY` repo secret.
 on:
   push:
     tags: ["v*"]
@@ -45,3 +49,18 @@ jobs:
           path: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Trigger Nayhein Builder build
+        continue-on-error: true
+        env:
+          NAYHEIN_BUILDER_API_KEY: ${{ secrets.NAYHEIN_BUILDER_API_KEY }}
+        run: |
+          echo "Submitting build to Nayhein Builder…"
+          response=$(curl -sS -X POST https://build.nayhein.com/api/builds \
+            -H "Authorization: Bearer $NAYHEIN_BUILDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"repoUrl\":\"${{ github.server_url }}/${{ github.repository }}.git\",\"commitSha\":\"${{ github.sha }}\",\"branch\":\"${{ github.ref_name }}\"}")
+          echo "$response"
+          echo "$response" | grep -q '"status"' \
+            && echo "Builder accepted the build." \
+            || (echo "Builder did not accept the build." && exit 1)
