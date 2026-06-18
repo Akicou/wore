@@ -7,6 +7,7 @@ import type { FormatState } from "./context";
 import { useEditor } from "./context";
 import { ImageToolbar } from "./ImageToolbar";
 import { insertHTML, replaceSelectionWithHTML } from "@/lib/editor";
+import { fileToDataUrl, fittedImageStyle, imageFileFromClipboard } from "@/lib/images";
 
 function currentBlock(el: HTMLElement): string {
   const sel = window.getSelection();
@@ -153,6 +154,30 @@ export function WoreEditor({
     el.addEventListener("click", onClick);
     return () => el.removeEventListener("click", onClick);
   }, [editorRef]);
+
+  // paste images → insert as real <img> data URLs (sized to fit the page).
+  // Text/HTML paste falls through to the browser default.
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    const onPaste = async (e: ClipboardEvent) => {
+      const file = imageFileFromClipboard(e);
+      if (!file) return; // let the browser handle text/html paste
+      e.preventDefault();
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        const style = await fittedImageStyle(dataUrl, window.getSelection()?.anchorNode ?? null);
+        ctx.focus();
+        insertHTML(`<img src="${dataUrl}" alt="${file.name || "pasted image"}" style="${style}"/><p><br/></p>`);
+        onChange(editorRef.current?.innerHTML ?? "");
+        toast.success("Image inserted");
+      } catch (err) {
+        toast.error("Could not paste image", { description: (err as Error).message });
+      }
+    };
+    el.addEventListener("paste", onPaste);
+    return () => el.removeEventListener("paste", onPaste);
+  }, [editorRef, ctx, onChange]);
 
   return (
     <div

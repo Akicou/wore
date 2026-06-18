@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -9,13 +10,17 @@ import {
   Check,
   CheckSquare,
   Clipboard,
+  Copy,
   Eraser,
   FileText,
   GitCompare,
   History,
   ListTree,
   Loader2,
+  Maximize2,
+  Minimize2,
   Plus,
+  RefreshCw,
   Sparkles,
   Square,
   Trash2,
@@ -33,6 +38,7 @@ import type { ChatImagePart, ChatMessage } from "@/lib/ai";
 import { insertHTML } from "@/lib/editor";
 import { checkDocumentPath, readDocumentTextFromPath } from "@/lib/documents/manager";
 import { htmlToPlainText } from "@/lib/documents/html";
+import { idbGet, idbSet } from "@/lib/idb";
 import { cn } from "@/lib/utils";
 
 interface Msg {
@@ -89,6 +95,7 @@ export function AIPanel({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [proposingEdit, setProposingEdit] = useState(false);
   const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
   const [attachedReference, setAttachedReference] = useState<string | null>(null);
@@ -96,6 +103,7 @@ export function AIPanel({
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const skipNextPersistRef = useRef(false);
+  const loadedRef = useRef(false);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? sessions[0];
   const messages = activeSession?.messages ?? [];
@@ -117,29 +125,56 @@ export function AIPanel({
     });
   };
 
+  // Load chats from IndexedDB (durable across app updates). One-time migration
+  // of any legacy localStorage data into IndexedDB so nothing is lost.
   useEffect(() => {
+    let cancelled = false;
     skipNextPersistRef.current = true;
-    try {
-      const raw = localStorage.getItem(chatStorageKey);
-      const parsed = raw ? (JSON.parse(raw) as ChatSession[]) : [];
-      const valid = parsed.filter((s) => s && s.id && Array.isArray(s.messages));
-      const next = valid.length ? valid : [newChatSession()];
-      setSessions(next);
-      setActiveSessionId(next[0].id);
-    } catch {
-      const next = [newChatSession()];
-      setSessions(next);
-      setActiveSessionId(next[0].id);
-    }
+    loadedRef.current = false;
+    (async () => {
+      try {
+        let parsed = await idbGet<ChatSession[]>(chatStorageKey);
+        // Legacy migration: pull old localStorage chats into IDB once.
+        if ((!parsed || !parsed.length) && typeof localStorage !== "undefined") {
+          const legacyRaw = localStorage.getItem(chatStorageKey);
+          if (legacyRaw) {
+            try {
+              parsed = JSON.parse(legacyRaw) as ChatSession[];
+              await idbSet(chatStorageKey, parsed);
+              localStorage.removeItem(chatStorageKey);
+            } catch {}
+          }
+        }
+        const valid = (parsed ?? []).filter((s) => s && s.id && Array.isArray(s.messages));
+        const next = valid.length ? valid : [newChatSession()];
+        if (cancelled) return;
+        setSessions(next);
+        setActiveSessionId(next[0].id);
+      } catch {
+        if (cancelled) return;
+        const next = [newChatSession()];
+        setSessions(next);
+        setActiveSessionId(next[0].id);
+      } finally {
+        loadedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [chatStorageKey]);
 
+  // Persist to IndexedDB (debounced so streaming doesn't hammer writes).
   useEffect(() => {
-    if (!sessions.length) return;
+    if (!sessions.length || !loadedRef.current) return;
     if (skipNextPersistRef.current) {
       skipNextPersistRef.current = false;
       return;
     }
-    localStorage.setItem(chatStorageKey, JSON.stringify(sessions.slice(0, 50)));
+    const t = setTimeout(() => {
+      idbSet(chatStorageKey, sessions.slice(0, 50)).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
   }, [chatStorageKey, sessions]);
 
   useEffect(() => {
@@ -257,22 +292,18 @@ export function AIPanel({
     const ac = new AbortController();
     abortRef.current = ac;
     try {
-      const res = await chat(
-        profile,
-        [
-          {
-            role: "system",
-            content:
-              "You are WoRe's document editing engine. Return ONLY a complete updated HTML fragment for the document body. No markdown fences, no explanations. Preserve all existing images, tables, links, classes, inline styles, and structural wrappers unless the user explicitly asks to change them.",
-          },
-          {
-            role: "user",
-            content: `Instruction:\n${instruction}\n\nCurrent document plain text context:\n"""\n${docText.slice(0, 12000)}\n"""\n\nCurrent document HTML to edit:\n"""html\n${originalHtml.slice(0, 60000)}\n"""\n\nReturn the full updated HTML fragment only.`,
-          },
-        ],
-        { model: profile.defaultChatModel, maxTokens: Math.min(profile.maxTokens ?? 16384, 32000), temperature: 0.2, signal: ac.signal }
-      );
-      const proposedHtml = cleanModelHtml(res.text);
+      const res = await chatSimple(profile, [
+        {
+          role: "system",
+          content:
+            "You are WoRe's document editing engine. Return ONLY a complete updated HTML fragment for the document body. No markdown fences, no explanations. Preserve all existing images, tables, links, classes, inline styles, and structural wrappers unless the user explicitly asks to change them.",
+        },
+        {
+          role: "user",
+          content: `Instruction:\n${instruction}\n\nCurrent document plain text context:\n"""\n${docText.slice(0, 12000)}\n"""\n\nCurrent document HTML to edit:\n"""html\n${originalHtml.slice(0, 60000)}\n"""\n\nReturn the full updated HTML fragment only.`,
+        },
+      ]);
+      const proposedHtml = cleanModelHtml(res);
       if (!proposedHtml || htmlToPlainText(proposedHtml).length < 2) {
         throw new Error("Model did not return usable edited HTML.");
       }
@@ -310,55 +341,34 @@ export function AIPanel({
     toast.message("Edit discarded");
   };
 
-  const send = async (text: string) => {
+  /**
+   * Stream an assistant turn. `baseHistory` is the message list the turn
+   * appends to (current state for normal sends, the trimmed prefix for
+   * regenerate). The user bubble shows `userDisplay`; the model is fed
+   * `apiPrompt` (which may include document/selection context).
+   */
+  const streamReply = async (apiPrompt: string, baseHistory: Msg[], userDisplay: string) => {
     if (!profile) {
       toast.error("No AI profile", { description: "Configure one in Settings." });
-      return;
-    }
-    if (!profile.apiKey && !profile.baseUrl.includes("localhost")) {
-      toast.error("Missing API key", { description: `Add a key for “${profile.name}”.` });
       return;
     }
     const docContext = getDocContext();
     const allImages = await ctx.getDocumentImages().catch(() => []);
     const visionReady = isVisionCapable(profile, profile.defaultChatModel);
     const visionImages: ChatImagePart[] = visionReady ? allImages.slice(0, 8) : [];
-    let mentionedDocs: Array<{ name: string; path: string; text: string }> = [];
-    try {
-      mentionedDocs = await readMentionedDocuments(text);
-    } catch (e) {
-      toast.error("Could not read @file reference", { description: (e as Error).message });
-      return;
-    }
 
-    const parts: string[] = [];
-    if (attachedReference) {
-      parts.push(`Referenced selection from the document:\n"""\n${attachedReference.slice(0, 6000)}\n"""`);
-    }
-    for (const doc of mentionedDocs) {
-      parts.push(`Referenced file @${doc.path} (${doc.name}):\n"""\n${doc.text.slice(0, 12000)}\n"""`);
-    }
-    if (allImages.length && !visionReady) {
-      parts.push(
-        `Document images present but the selected model "${profile.defaultChatModel}" is not marked as vision-capable. Image metadata only:\n` +
-          allImages
-            .map((img) => `Image ${img.index}: ${img.alt ?? "image"}${img.caption ? ` — caption: ${img.caption}` : ""}`)
-            .join("\n")
-      );
-    }
-    if (text) parts.push(text);
-    const finalText = parts.join("\n\n");
-    const userMsg: Msg = { role: "user", content: text };
-    const history: ChatMessage[] = [
-      ...messages.map((m) => ({ role: m.role, content: m.content }) as ChatMessage),
-    ];
-    updateMessages((m) => [...m, userMsg, { role: "assistant", content: "" }]);
+    const apiHistory: ChatMessage[] = baseHistory.map((m) => ({ role: m.role, content: m.content }) as ChatMessage);
+    updateMessages(() => [
+      ...baseHistory,
+      { role: "user", content: userDisplay },
+      { role: "assistant", content: "" },
+    ]);
     setInput("");
     setBusy(true);
     const ac = new AbortController();
     abortRef.current = ac;
 
-    const reply = docChatMessages({ question: finalText, docContext, history, images: visionImages });
+    const reply = docChatMessages({ question: apiPrompt, docContext, history: apiHistory, images: visionImages });
     let acc = "";
     try {
       for await (const ev of chatStream(profile, reply, {
@@ -392,7 +402,62 @@ export function AIPanel({
     }
   };
 
-  return (
+  const send = async (text: string) => {
+    if (!profile) {
+      toast.error("No AI profile", { description: "Configure one in Settings." });
+      return;
+    }
+    if (!profile.apiKey && !profile.baseUrl.includes("localhost")) {
+      toast.error("Missing API key", { description: `Add a key for “${profile.name}”.` });
+      return;
+    }
+    const allImages = await ctx.getDocumentImages().catch(() => []);
+    const visionReady = isVisionCapable(profile, profile.defaultChatModel);
+    let mentionedDocs: Array<{ name: string; path: string; text: string }> = [];
+    try {
+      mentionedDocs = await readMentionedDocuments(text);
+    } catch (e) {
+      toast.error("Could not read @file reference", { description: (e as Error).message });
+      return;
+    }
+
+    const parts: string[] = [];
+    if (attachedReference) {
+      parts.push(`Referenced selection from the document:\n"""\n${attachedReference.slice(0, 6000)}\n"""`);
+    }
+    for (const doc of mentionedDocs) {
+      parts.push(`Referenced file @${doc.path} (${doc.name}):\n"""\n${doc.text.slice(0, 12000)}\n"""`);
+    }
+    if (allImages.length && !visionReady) {
+      parts.push(
+        `Document images present but the selected model "${profile.defaultChatModel}" is not marked as vision-capable. Image metadata only:\n` +
+          allImages
+            .map((img) => `Image ${img.index}: ${img.alt ?? "image"}${img.caption ? ` — caption: ${img.caption}` : ""}`)
+            .join("\n")
+      );
+    }
+    if (text) parts.push(text);
+    const finalText = parts.join("\n\n");
+    await streamReply(finalText, messages, text);
+  };
+
+  /** Re-run the last user turn (used after deleting an assistant reply). */
+  const regenerate = async () => {
+    if (busy || !profile) return;
+    let lastUserIdx = -1;
+    for (let k = messages.length - 1; k >= 0; k--) {
+      if (messages[k].role === "user") {
+        lastUserIdx = k;
+        break;
+      }
+    }
+    if (lastUserIdx === -1) return;
+    const prompt = messages[lastUserIdx].content;
+    const baseHistory = messages.slice(0, lastUserIdx);
+    await streamReply(prompt, baseHistory, prompt);
+  };
+
+  const panel = (
     <div className="no-print flex h-full flex-col bg-card">
       <div className="relative flex items-center gap-2 border-b border-border px-3 py-2.5">
         <Bot className="size-4 text-accent-strong" />
@@ -405,6 +470,14 @@ export function AIPanel({
         <Badge variant="secondary" className="hidden px-1.5 sm:inline-flex">
           {profile?.name ?? "no profile"}
         </Badge>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setFullscreen((v) => !v)}
+          title={fullscreen ? "Exit full screen" : "Open in full screen"}
+        >
+          {fullscreen ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+        </Button>
         <Button variant="ghost" size="icon-sm" onClick={startNewChat} title="New chat">
           <Plus className="size-3.5" />
         </Button>
@@ -474,19 +547,26 @@ export function AIPanel({
             Ask anything about this document. The agent reads the full text for context.
           </div>
         )}
-        {messages.map((m, i) => (
-          <MessageBubble
-            key={i}
-            msg={m}
-            onDelete={() => updateMessages((current) => current.filter((_, idx) => idx !== i))}
-          />
-        ))}
-        {busy && messages[messages.length - 1]?.content === "" && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin text-accent-strong" />
-            <span className="ai-text font-medium">Thinking…</span>
-          </div>
-        )}
+        {messages.map((m, i) => {
+          const isLastAssistant =
+            m.role === "assistant" && i === messages.length - 1 && busy && m.content === "";
+          // Show regenerate when the last message is a user turn with no reply
+          // after it (e.g. the assistant reply was deleted).
+          const canRegenerate =
+            !busy &&
+            m.role === "user" &&
+            i === messages.length - 1;
+          return (
+            <MessageBubble
+              key={i}
+              msg={m}
+              thinking={isLastAssistant}
+              canRegenerate={canRegenerate}
+              onRegenerate={regenerate}
+              onDelete={() => updateMessages((current) => current.filter((_, idx) => idx !== i))}
+            />
+          );
+        })}
       </div>
 
       {/* composer */}
@@ -571,6 +651,42 @@ export function AIPanel({
       </div>
     </div>
   );
+
+  if (fullscreen) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[130] flex flex-col bg-black/45 backdrop-blur-md data-[state=open]:animate-in"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Assistant (full screen)"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setFullscreen(false);
+        }}
+      >
+        <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
+          <div className="my-3 flex-1 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:my-6">
+            {panel}
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
+  return panel;
+}
+
+/** Single non-streaming chat call used by the edit-proposal flow. */
+async function chatSimple(
+  profile: NonNullable<ReturnType<typeof useEditor>["profile"]>,
+  messages: ChatMessage[]
+): Promise<string> {
+  const res = await chat(profile, messages, {
+    model: profile.defaultChatModel,
+    maxTokens: Math.min(profile.maxTokens ?? 16384, 32000),
+    temperature: 0.2,
+  });
+  return res.text;
 }
 
 function cleanModelHtml(raw: string) {
@@ -719,9 +835,34 @@ function FileRefChip({ refInfo }: { refInfo: FileRef }) {
   );
 }
 
-function MessageBubble({ msg, onDelete }: { msg: Msg; onDelete: () => void }) {
+function MessageBubble({
+  msg,
+  thinking,
+  canRegenerate,
+  onRegenerate,
+  onDelete,
+}: {
+  msg: Msg;
+  thinking?: boolean;
+  canRegenerate?: boolean;
+  onRegenerate?: () => void;
+  onDelete: () => void;
+}) {
   const ctx = useEditor();
+  const [copied, setCopied] = useState(false);
   const isUser = msg.role === "user";
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+      toast.success("Copied");
+    } catch {
+      toast.error("Could not copy");
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -738,18 +879,31 @@ function MessageBubble({ msg, onDelete }: { msg: Msg; onDelete: () => void }) {
       </div>
       <div
         className={cn(
-          "group relative max-w-[85%] rounded-lg px-3 py-2 text-sm",
+          // min-w-0 + break-words keeps long tokens/URLs inside the bubble
+          "group relative min-w-0 max-w-[85%] break-words rounded-lg px-3 py-2 text-sm",
           isUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
         )}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap">{msg.content}</p>
+          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+        ) : thinking ? (
+          <div className="flex items-center gap-2 py-0.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin text-accent-strong" />
+            <span className="ai-text font-medium">Thinking…</span>
+          </div>
         ) : (
-          <div className="prose-chat">
+          <div className="prose-chat break-words">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "…"}</ReactMarkdown>
           </div>
         )}
         <div className="absolute -bottom-2 right-2 hidden items-center gap-1 group-hover:flex">
+          <button
+            onClick={copy}
+            className="inline-flex items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-[10px] shadow-sm"
+            title="Copy message"
+          >
+            {copied ? <Check className="size-2.5 text-success" /> : <Copy className="size-2.5" />} Copy
+          </button>
           {!isUser && msg.content && (
             <button
               onClick={() => {
@@ -761,6 +915,15 @@ function MessageBubble({ msg, onDelete }: { msg: Msg; onDelete: () => void }) {
               className="inline-flex items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-[10px] shadow-sm"
             >
               <Clipboard className="size-2.5" /> Insert
+            </button>
+          )}
+          {canRegenerate && (
+            <button
+              onClick={onRegenerate}
+              className="inline-flex items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-accent-strong shadow-sm hover:bg-accent-soft"
+              title="Regenerate the assistant reply"
+            >
+              <RefreshCw className="size-2.5" /> Regenerate
             </button>
           )}
           <button

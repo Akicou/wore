@@ -102,10 +102,11 @@ export function insertHTML(html: string) {
   range.collapse(false);
 }
 
-export function insertImage(src: string, opts?: { alt?: string; caption?: string }) {
+export function insertImage(src: string, opts?: { alt?: string; caption?: string; style?: string }) {
+  const style = opts?.style ? ` style="${opts.style}"` : "";
   const html = opts?.caption
-    ? `<figure><img src="${src}" alt="${opts?.alt ?? ""}"/><figcaption>${escapeAttr(opts.caption)}</figcaption></figure><p><br/></p>`
-    : `<img src="${src}" alt="${opts?.alt ?? ""}"/><p><br/></p>`;
+    ? `<figure><img src="${src}" alt="${opts?.alt ?? ""}"${style}/><figcaption>${escapeAttr(opts.caption)}</figcaption></figure><p><br/></p>`
+    : `<img src="${src}" alt="${opts?.alt ?? ""}"${style}/><p><br/></p>`;
   insertHTML(html);
 }
 

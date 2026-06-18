@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/form";
+import { Label } from "@/components/ui/form";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,15 @@ interface ImageToolbarProps {
   imageEl: HTMLImageElement;
   onClose: () => void;
   onChange: () => void;
+}
+
+type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
+/** Aspect ratio from the image's natural dimensions (fallback to current box). */
+function naturalRatio(img: HTMLImageElement): number {
+  const w = img.naturalWidth || img.width || 1;
+  const h = img.naturalHeight || img.height || 1;
+  return w / h;
 }
 
 export function ImageToolbar({ imageEl, onClose, onChange }: ImageToolbarProps) {
@@ -51,19 +60,25 @@ export function ImageToolbar({ imageEl, onClose, onChange }: ImageToolbarProps) 
       }
       if (next.outlineColor !== undefined) s.outlineColor = next.outlineColor;
       if (next.radius !== undefined) s.borderRadius = `${next.radius}px`;
-      if (next.widthPct !== undefined) s.width = `${next.widthPct}%`;
+      if (next.widthPct !== undefined) {
+        // percent width relative to the containing block
+        s.width = `${next.widthPct}%`;
+        s.height = "auto";
+        s.maxWidth = "none";
+      }
       onChange();
     },
     [imageEl, onChange]
   );
 
-  // close on click outside
+  // close on click outside (ignores the resize handles, which live in a sibling)
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
-      if (!toolbarRef.current?.contains(t) && t !== imageEl) {
-        onClose();
-      }
+      if (toolbarRef.current?.contains(t)) return;
+      if (t === imageEl) return;
+      if (t instanceof Element && t.closest("[data-img-handle]")) return;
+      onClose();
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -85,96 +100,220 @@ export function ImageToolbar({ imageEl, onClose, onChange }: ImageToolbarProps) 
     onClose();
   };
 
+  // --- resize handles -------------------------------------------------------
+  // Drag any edge/corner to set the image width (px), keeping aspect ratio.
+  // The right/east handle is the natural one; left/west mirrors it.
+  const onHandleDragStart = (e: React.PointerEvent, _handle: Handle) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = imageEl.getBoundingClientRect().width || imageEl.width || 100;
+    const ratio = naturalRatio(imageEl);
+    const host = imageEl.ownerDocument;
+    imageEl.style.maxWidth = "none";
+
+    const move = (ev: PointerEvent) => {
+      // east-side handles grow with rightward drag, west-side grow with leftward
+      const isWest = _handle.includes("w");
+      const dx = ev.clientX - startX;
+      let next = startWidth + (isWest ? -dx : dx);
+      // clamp to sane bounds
+      next = Math.max(40, Math.min(next, 4000));
+      imageEl.style.width = `${Math.round(next)}px`;
+      imageEl.style.height = "auto";
+      // keep the slider roughly in sync (width as % of parent)
+      const parent = imageEl.parentElement;
+      const parentW = parent ? parent.getBoundingClientRect().width || next : next;
+      const pct = Math.round((next / parentW) * 100);
+      setWidthPct(Math.max(20, Math.min(100, pct)));
+      onChange();
+    };
+    const up = () => {
+      host.removeEventListener("pointermove", move);
+      host.removeEventListener("pointerup", up);
+    };
+    host.addEventListener("pointermove", move);
+    host.addEventListener("pointerup", up);
+  };
+
+  const handles: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
   return (
-    <div
-      ref={toolbarRef}
-      className={cn(
-        "fixed z-[100] w-56 rounded-xl border border-border bg-popover p-3 shadow-xl",
-        "translate-y-[-100%] translate-x-[-50%]"
-      )}
-      style={{ top: `${top}px`, left: `${left}px` }}
-    >
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-medium">Image</span>
-        <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon-sm" onClick={deleteImage} className="text-destructive hover:text-destructive" aria-label="Delete image">
-            <Trash2 className="size-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={onClose} className="text-muted-foreground" aria-label="Close">
-            <X className="size-3.5" />
-          </Button>
+    <>
+      {/* resize handles overlay (position: fixed, tracks the image on scroll/resize) */}
+      <HandleOverlay imageEl={imageEl}>
+        {handles.map((h) => (
+          <button
+            key={h}
+            data-img-handle
+            aria-label={`Resize image (${h})`}
+            onPointerDown={(e) => onHandleDragStart(e, h)}
+            className={cn(
+              "absolute z-[101] grid size-3 place-items-center rounded-full border-2 border-accent-strong bg-card shadow",
+              "cursor-nwse-resize"
+            )}
+            style={handlePosition(h)}
+          >
+            <span className="block size-1 rounded-full bg-accent-strong" />
+          </button>
+        ))}
+      </HandleOverlay>
+
+      <div
+        ref={toolbarRef}
+        className={cn(
+          "fixed z-[100] w-56 rounded-xl border border-border bg-popover p-3 shadow-xl",
+          "translate-y-[-100%] translate-x-[-50%]"
+        )}
+        style={{ top: `${top}px`, left: `${left}px` }}
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs font-medium">Image</span>
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon-sm" onClick={deleteImage} className="text-destructive hover:text-destructive" aria-label="Delete image">
+              <Trash2 className="size-3.5" />
+            </Button>
+            <Button variant="ghost" size="icon-sm" onClick={onClose} className="text-muted-foreground" aria-label="Close">
+              <X className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Row label="Opacity">
+            <Slider
+              value={[opacity]}
+              min={0.1}
+              max={1}
+              step={0.05}
+              onValueChange={([v]) => {
+                setOpacity(v);
+                apply({ opacity: v });
+              }}
+            />
+            <span className="w-8 text-right text-[10px] tabular-nums">{Math.round(opacity * 100)}%</span>
+          </Row>
+
+          <Row label="Width">
+            <Slider
+              value={[widthPct]}
+              min={20}
+              max={100}
+              step={5}
+              onValueChange={([v]) => {
+                setWidthPct(v);
+                apply({ widthPct: v });
+              }}
+            />
+            <span className="w-8 text-right text-[10px] tabular-nums">{Math.round(widthPct)}%</span>
+          </Row>
+
+          <Row label="Radius">
+            <Slider
+              value={[radius]}
+              min={0}
+              max={32}
+              step={1}
+              onValueChange={([v]) => {
+                setRadius(v);
+                apply({ radius: v });
+              }}
+            />
+            <span className="w-8 text-right text-[10px] tabular-nums">{radius}px</span>
+          </Row>
+
+          <Row label="Outline">
+            <Slider
+              value={[outlineWidth]}
+              min={0}
+              max={8}
+              step={0.5}
+              onValueChange={([v]) => {
+                setOutlineWidth(v);
+                apply({ outlineWidth: v });
+              }}
+            />
+            <div className="flex items-center gap-1">
+              <input
+                type="color"
+                value={outlineColor}
+                onChange={(e) => {
+                  setOutlineColor(e.target.value);
+                  apply({ outlineColor: e.target.value });
+                }}
+                className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0"
+                aria-label="Outline color"
+              />
+              <span className="w-5 text-right text-[10px] tabular-nums">{outlineWidth}</span>
+            </div>
+          </Row>
         </div>
       </div>
+    </>
+  );
+}
 
-      <div className="space-y-3">
-        <Row label="Opacity">
-          <Slider
-            value={[opacity]}
-            min={0.1}
-            max={1}
-            step={0.05}
-            onValueChange={([v]) => {
-              setOpacity(v);
-              apply({ opacity: v });
-            }}
-          />
-          <span className="w-8 text-right text-[10px] tabular-nums">{Math.round(opacity * 100)}%</span>
-        </Row>
+/** Positions the small handle dot for a given edge/corner. */
+function handlePosition(h: Handle): React.CSSProperties {
+  const base: React.CSSProperties = {};
+  const off = "-6px";
+  switch (h) {
+    case "nw":
+      return { top: off, left: off, cursor: "nwse-resize" };
+    case "n":
+      return { top: off, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" };
+    case "ne":
+      return { top: off, right: off, cursor: "nesw-resize" };
+    case "e":
+      return { top: "50%", right: off, transform: "translateY(-50%)", cursor: "ew-resize" };
+    case "se":
+      return { bottom: off, right: off, cursor: "nwse-resize" };
+    case "s":
+      return { bottom: off, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" };
+    case "sw":
+      return { bottom: off, left: off, cursor: "nesw-resize" };
+    case "w":
+      return { top: "50%", left: off, transform: "translateY(-50%)", cursor: "ew-resize" };
+  }
+  return base;
+}
 
-        <Row label="Width">
-          <Slider
-            value={[widthPct]}
-            min={20}
-            max={100}
-            step={5}
-            onValueChange={([v]) => {
-              setWidthPct(v);
-              apply({ widthPct: v });
-            }}
-          />
-          <span className="w-8 text-right text-[10px] tabular-nums">{Math.round(widthPct)}%</span>
-        </Row>
+/**
+ * Fixed-position overlay that exactly covers the image and repositions on
+ * scroll/resize so the 8 handles always hug the image edges.
+ */
+function HandleOverlay({
+  imageEl,
+  children,
+}: {
+  imageEl: HTMLImageElement;
+  children: React.ReactNode;
+}) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const tick = () => force((n) => n + 1);
+    window.addEventListener("scroll", tick, true);
+    window.addEventListener("resize", tick);
+    const ro = new ResizeObserver(tick);
+    ro.observe(imageEl);
+    return () => {
+      window.removeEventListener("scroll", tick, true);
+      window.removeEventListener("resize", tick);
+      ro.disconnect();
+    };
+  }, [imageEl]);
 
-        <Row label="Radius">
-          <Slider
-            value={[radius]}
-            min={0}
-            max={32}
-            step={1}
-            onValueChange={([v]) => {
-              setRadius(v);
-              apply({ radius: v });
-            }}
-          />
-          <span className="w-8 text-right text-[10px] tabular-nums">{radius}px</span>
-        </Row>
-
-        <Row label="Outline">
-          <Slider
-            value={[outlineWidth]}
-            min={0}
-            max={8}
-            step={0.5}
-            onValueChange={([v]) => {
-              setOutlineWidth(v);
-              apply({ outlineWidth: v });
-            }}
-          />
-          <div className="flex items-center gap-1">
-            <input
-              type="color"
-              value={outlineColor}
-              onChange={(e) => {
-                setOutlineColor(e.target.value);
-                apply({ outlineColor: e.target.value });
-              }}
-              className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0"
-              aria-label="Outline color"
-            />
-            <span className="w-5 text-right text-[10px] tabular-nums">{outlineWidth}</span>
-          </div>
-        </Row>
-      </div>
+  const r = imageEl.getBoundingClientRect();
+  return (
+    <div
+      data-img-handle
+      className="pointer-events-none fixed z-[101]"
+      style={{ left: r.left, top: r.top, width: r.width, height: r.height }}
+    >
+      {/* selection outline */}
+      <div className="absolute inset-0 rounded-[2px] border-2 border-accent-strong/70" />
+      {/* handles themselves are interactive */}
+      <div className="absolute inset-0">{children}</div>
     </div>
   );
 }

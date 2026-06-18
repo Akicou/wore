@@ -21,6 +21,7 @@ import {
 import { useStore } from "@/lib/store";
 import { generateImage } from "@/lib/ai";
 import { insertImage } from "@/lib/editor";
+import { fittedImageStyle } from "@/lib/images";
 import { useEditor } from "./context";
 import { downloadBlob } from "@/lib/utils";
 
@@ -77,10 +78,11 @@ export function ImageGenDialog({
     }
   };
 
-  const insert = () => {
+  const insert = async () => {
     if (!result) return;
     ctx.focus();
-    insertImage(result, { alt: prompt.slice(0, 80), caption: "" });
+    const style = await fittedImageStyle(result, ctx.editorEl?.current ?? null);
+    insertImage(result, { alt: prompt.slice(0, 80), caption: "", style });
     ctx.sync();
     onOpenChange(false);
     toast.success("Image inserted");
