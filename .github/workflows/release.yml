@@ -11,6 +11,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# The default GITHUB_TOKEN is read-only on newer repos; tauri-action needs
+# write access to create the GitHub Release that installers attach to.
+permissions:
+  contents: write
+
 jobs:
   windows:
     runs-on: windows-latest
