@@ -56,16 +56,24 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
 
       - name: Trigger Nayhein Builder build
+        shell: bash
         continue-on-error: true
         env:
           NAYHEIN_BUILDER_API_KEY: ${{ secrets.NAYHEIN_BUILDER_API_KEY }}
         run: |
+          set -euo pipefail
           echo "Submitting build to Nayhein Builder…"
           response=$(curl -sS -X POST https://build.nayhein.com/api/builds \
             -H "Authorization: Bearer $NAYHEIN_BUILDER_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{\"repoUrl\":\"${{ github.server_url }}/${{ github.repository }}.git\",\"commitSha\":\"${{ github.sha }}\",\"branch\":\"${{ github.ref_name }}\"}")
+            --data-binary @- <<'JSON'
+          {"repoUrl":"${{ github.server_url }}/${{ github.repository }}.git","commitSha":"${{ github.sha }}","branch":"${{ github.ref_name }}"}
+          JSON
+          )
           echo "$response"
-          echo "$response" | grep -q '"status"' \
-            && echo "Builder accepted the build." \
-            || (echo "Builder did not accept the build." && exit 1)
+          if echo "$response" | grep -q '"status"'; then
+            echo "Builder accepted the build."
+          else
+            echo "Builder did not accept the build."
+            exit 1
+          fi
