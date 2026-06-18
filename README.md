@@ -8,6 +8,14 @@ The application is designed for users who want to work with documents locally wh
 
 WoRe is under active development. Core editing, import/export, AI chat, local model support, and Windows installer builds are functional, but some DOCX fidelity work remains.
 
+## Download
+
+Get the latest installer for your platform from the public downloads page — it always points at the newest release, so you only need to bookmark this one link:
+
+**[build.nayhein.com/r/Akicou/wore](https://build.nayhein.com/r/Akicou/wore)**
+
+Windows (`.exe` setup) and Linux (`.AppImage`, `.deb`) builds are published automatically on every release. Source and per-release assets are also on [GitHub Releases](https://github.com/Akicou/wore/releases).
+
 ### Known issue to fix
 
 DOCX edit mode and DOCX preview mode can still diverge for complex Word layouts.
