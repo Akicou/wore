@@ -67,7 +67,7 @@ jobs:
             -H "Authorization: Bearer $NAYHEIN_BUILDER_API_KEY" \
             -H "Content-Type: application/json" \
             --data-binary @- <<'JSON'
-          {"repoUrl":"${{ github.server_url }}/${{ github.repository }}.git","commitSha":"${{ github.sha }}","branch":"${{ github.ref_name }}"}
+          {"repoUrl":"${{ github.server_url }}/${{ github.repository }}.git","commitSha":"${{ github.sha }}","branch":"${{ github.ref_name }}","version":"${{ github.ref_name }}","autoPublish":true}
           JSON
           )
           echo "$response"
