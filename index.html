@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/wore.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Geist:wght@100..900&family=Geist+Mono:wght@100..700&display=swap"
+      rel="stylesheet"
+    />
+    <title>WoRe — Agentic Document Studio</title>
+    <meta
+      name="description"
+      content="WoRe by Nayhein.com — an agentic editor for PDF, DOCX & Markdown with AI built in."
+    />
+    <script>
+      // Apply persisted theme before paint to avoid flash.
+      (function () {
+        try {
+          var raw = localStorage.getItem("wore.theme");
+          var mode = raw ? JSON.parse(raw) : { theme: "system" };
+          var sys = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var dark = mode.theme === "dark" || (mode.theme === "system" && sys);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

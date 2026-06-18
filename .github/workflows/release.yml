@@ -1,0 +1,47 @@
+name: Release (Windows)
+
+# Builds a native Windows installer on version tags.
+# Create a release: git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3
+
+      - name: Install frontend deps
+        run: bun install --frozen-lockfile
+
+      - name: Build Tauri app (MSI + NSIS)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "WoRe ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: wore-windows
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe

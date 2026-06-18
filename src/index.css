@@ -1,0 +1,558 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ----------------------------------------------------------------------------
+   Theme tokens — semantic CSS variables, resolved per color-scheme
+---------------------------------------------------------------------------- */
+:root {
+  --radius: 0.7rem;
+
+  /* surfaces — warm paper */
+  --background: #fbf9f4;
+  --background-2: #f4f0e7;
+  --foreground: #1b1812;
+  --foreground-muted: #5c554a;
+
+  --card: #ffffff;
+  --card-foreground: #1b1812;
+
+  --popover: #fffdf8;
+  --popover-foreground: #1b1812;
+
+  /* primary = ink (Vercel/shadcn move) */
+  --primary: #1b1812;
+  --primary-foreground: #fbf9f4;
+  --primary-hover: #2c271d;
+
+  /* accent = amber (WoRe signature) */
+  --accent: #b06a12;
+  --accent-foreground: #1b1812;
+  --accent-soft: #f3e6cf;
+  --accent-strong: #8f5409;
+
+  --muted: #efe9dd;
+  --muted-foreground: #6f6657;
+
+  --destructive: #b4261c;
+  --destructive-foreground: #fff8f2;
+
+  --success: #2f7d52;
+  --info: #1f6feb;
+
+  --border: #e4dccb;
+  --border-strong: #d3c7ad;
+  --input: #e4dccb;
+  --ring: #b06a12;
+
+  --selection: #f7e6c4; /* selection background */
+
+  /* document canvas */
+  --canvas: #ece5d6;
+  --page: #ffffff;
+  --page-ink: #211d16;
+
+  /* shadows — warm */
+  --shadow-color: 35deg 30% 30%;
+}
+
+.dark {
+  --background: #100f0c;
+  --background-2: #16140f;
+  --foreground: #f4efe4;
+  --foreground-muted: #a89f8e;
+
+  --card: #18160f;
+  --card-foreground: #f4efe4;
+
+  --popover: #1b190f;
+  --popover-foreground: #f4efe4;
+
+  --primary: #f4efe4;
+  --primary-foreground: #100f0c;
+  --primary-hover: #e7e0d1;
+
+  --accent: #e89a3c;
+  --accent-foreground: #100f0c;
+  --accent-soft: #2a2013;
+  --accent-strong: #f3b15c;
+
+  --muted: #211e16;
+  --muted-foreground: #8e8575;
+
+  --destructive: #e0635a;
+  --destructive-foreground: #1a0c0a;
+
+  --success: #5fd394;
+  --info: #62a8ff;
+
+  --border: #2a2619;
+  --border-strong: #3a3422;
+  --input: #2a2619;
+  --ring: #e89a3c;
+
+  --selection: #4a3410;
+
+  --canvas: #0c0b09;
+  --page: #19170f;
+  --page-ink: #efe9da;
+
+  --shadow-color: 40deg 40% 2%;
+}
+
+/* ----------------------------------------------------------------------------
+   Tailwind theme mapping
+---------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-background-2: var(--background-2);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-info: var(--info);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-canvas: var(--canvas);
+  --color-page: var(--page);
+  --color-page-ink: var(--page-ink);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+
+  --animate-shimmer: shimmer 2s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+}
+
+/* ----------------------------------------------------------------------------
+   Base
+---------------------------------------------------------------------------- */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv01", "cv03";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: var(--selection);
+    color: var(--color-foreground);
+  }
+  /* Scrollbars — refined */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted-foreground);
+    background-clip: content-box;
+  }
+}
+
+/* ----------------------------------------------------------------------------
+   Utilities & components
+---------------------------------------------------------------------------- */
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  .bg-grid {
+    background-image: linear-gradient(
+        to right,
+        color-mix(in srgb, var(--color-border) 60%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--color-border) 60%, transparent) 1px,
+        transparent 1px
+      );
+    background-size: 28px 28px;
+  }
+  .bg-dots {
+    background-image: radial-gradient(
+      color-mix(in srgb, var(--color-border-strong) 80%, transparent) 1px,
+      transparent 1px
+    );
+    background-size: 18px 18px;
+  }
+  .glass {
+    background: color-mix(in srgb, var(--color-card) 78%, transparent);
+    backdrop-filter: blur(16px) saturate(160%);
+  }
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 1.25rem;
+    min-width: 1.25rem;
+    padding: 0 0.3rem;
+    border: 1px solid var(--color-border);
+    border-bottom-width: 2px;
+    border-radius: 0.35rem;
+    background: var(--color-muted);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--color-muted-foreground);
+  }
+  /* paper grain overlay */
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.04;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* AI "thinking" gradient text */
+.ai-text {
+  background: linear-gradient(
+    100deg,
+    var(--color-accent-strong),
+    var(--color-accent),
+    var(--color-info),
+    var(--color-accent-strong)
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+
+/* shadcn-style focus ring */
+.ring-focus:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-background), 0 0 0 4px var(--color-ring);
+}
+
+/* markdown rendering inside the assistant panel */
+.prose-chat p { margin: 0.35em 0; }
+.prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 0.6em 0 0.25em;
+}
+.prose-chat h1 { font-size: 1.25em; }
+.prose-chat h2 { font-size: 1.12em; }
+.prose-chat h3 { font-size: 1em; }
+.prose-chat ul, .prose-chat ol { margin: 0.35em 0; padding-left: 1.2em; }
+.prose-chat ul { list-style: disc; }
+.prose-chat ol { list-style: decimal; }
+.prose-chat li { margin: 0.15em 0; }
+.prose-chat strong { font-weight: 600; }
+.prose-chat a { color: var(--color-accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.prose-chat code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color-muted); padding: 1px 5px; border-radius: 4px; }
+.prose-chat pre { background: var(--color-muted); border: 1px solid var(--color-border); padding: 0.6em 0.8em; border-radius: 8px; overflow: auto; margin: 0.4em 0; }
+.prose-chat pre code { background: none; padding: 0; }
+.prose-chat blockquote { border-left: 2px solid var(--color-accent); padding-left: 0.7em; color: var(--color-foreground-muted); margin: 0.4em 0; }
+.prose-chat table { border-collapse: collapse; width: 100%; font-size: 0.85em; margin: 0.4em 0; }
+.prose-chat th, .prose-chat td { border: 1px solid var(--color-border); padding: 3px 7px; }
+.prose-chat th { background: var(--color-muted); font-weight: 600; }
+.prose-chat hr { border: none; border-top: 1px solid var(--color-border); margin: 0.6em 0; }
+.prose-mini p { margin: 0.15em 0; }
+
+/* ----------------------------------------------------------------------------
+   The document page (Word/Google-docs style white sheet)
+---------------------------------------------------------------------------- */
+.wore-page {
+  background: var(--color-page);
+  color: var(--color-page-ink);
+  box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.12),
+    0 12px 40px -12px hsl(var(--shadow-color) / 0.35);
+}
+
+/* ----------------------------------------------------------------------------
+   The rich-text editor (ProseMirror-free contenteditable surface)
+---------------------------------------------------------------------------- */
+.wore-editor {
+  outline: none;
+  caret-color: var(--color-accent);
+  line-height: 1.7;
+}
+.wore-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--color-muted-foreground);
+  pointer-events: none;
+  position: absolute;
+}
+.wore-editor h1,
+.wore-editor h2,
+.wore-editor h3,
+.wore-editor h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 1.4em 0 0.5em;
+}
+.wore-editor h1 {
+  font-size: 2.1em;
+}
+.wore-editor h2 {
+  font-size: 1.6em;
+}
+.wore-editor h3 {
+  font-size: 1.28em;
+}
+.wore-editor h4 {
+  font-size: 1.08em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-foreground-muted);
+}
+.wore-editor p {
+  margin: 0.55em 0;
+}
+.wore-editor a {
+  color: var(--color-accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.wore-editor ul,
+.wore-editor ol {
+  margin: 0.6em 0;
+  padding-left: 1.5em;
+}
+.wore-editor ul {
+  list-style: disc;
+}
+.wore-editor ol {
+  list-style: decimal;
+}
+.wore-editor li {
+  margin: 0.2em 0;
+}
+.wore-editor blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding: 0.2em 0 0.2em 1em;
+  margin: 0.9em 0;
+  color: var(--color-foreground-muted);
+  font-style: italic;
+}
+.wore-editor pre {
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.9em 1.1em;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  margin: 0.9em 0;
+}
+.wore-editor code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--color-muted);
+  padding: 0.12em 0.4em;
+  border-radius: 5px;
+}
+.wore-editor pre code {
+  background: none;
+  padding: 0;
+}
+.wore-editor img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 0.6em 0;
+}
+.wore-editor hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.6em 0;
+}
+.wore-editor table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.9em 0;
+}
+.wore-editor th,
+.wore-editor td {
+  border: 1px solid var(--color-border);
+  padding: 0.45em 0.7em;
+  text-align: left;
+  vertical-align: top;
+}
+.wore-editor th {
+  background: var(--color-muted);
+  font-weight: 600;
+}
+.wore-editor .wore-textbox {
+  border: 1.5px dashed var(--color-border-strong);
+  border-radius: 10px;
+  padding: 0.8em 1em;
+  margin: 0.8em 0;
+  background: color-mix(in srgb, var(--color-accent-soft) 35%, transparent);
+}
+.wore-editor mark {
+  background: var(--selection);
+  border-radius: 3px;
+  padding: 0.05em 0.15em;
+}
+.wore-editor figure {
+  margin: 1em 0;
+  text-align: center;
+}
+.wore-editor figcaption {
+  font-size: 0.82em;
+  color: var(--color-foreground-muted);
+  margin-top: 0.4em;
+}
+
+/* DOCX visual imports via docx-preview. Keep Word's generated CSS isolated and
+   prevent WoRe's editor prose defaults from overriding imported fonts/sizes. */
+.wore-editor .wore-docx-import {
+  line-height: normal;
+  font-family: initial;
+  color: initial;
+}
+.wore-editor .wore-docx-import style,
+.wore-docx-style-host {
+  display: none !important;
+}
+.wore-editor .wore-docx-import .wore-docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.wore-editor .wore-docx-import section.wore-docx {
+  box-shadow: none !important;
+  margin: 0 auto 1rem !important;
+  overflow: visible !important;
+}
+.wore-editor-docx-visual {
+  line-height: normal !important;
+  font-size: initial !important;
+  padding: 0 !important;
+}
+.wore-editor-docx-visual .wore-docx-import .wore-docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.wore-editor-docx-visual .wore-docx-import section.wore-docx {
+  margin: 0 auto 1rem !important;
+  box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.12),
+    0 12px 40px -12px hsl(var(--shadow-color) / 0.35) !important;
+}
+.wore-editor .wore-docx-import img,
+.wore-editor .wore-docx-import svg,
+.wore-docx-preview img,
+.wore-docx-preview svg {
+  max-width: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+}
+.wore-docx-preview .wore-docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.wore-docx-preview section.wore-docx {
+  margin: 0 auto 1rem !important;
+  box-shadow: 0 1px 2px hsl(var(--shadow-color) / 0.12),
+    0 12px 40px -12px hsl(var(--shadow-color) / 0.35) !important;
+}
+/* placeholder image frame for AI image-gen inserts */
+.wore-editor .wore-img-wrap {
+  display: inline-block;
+  position: relative;
+}
+
+/* Print: only the document sheet */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+  }
+  .wore-page {
+    box-shadow: none;
+    margin: 0 !important;
+    width: 100% !important;
+    min-height: auto !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

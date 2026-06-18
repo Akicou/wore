@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "WoRe",
+  "version": "0.1.0",
+  "identifier": "com.nayhein.wore",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "WoRe — Agentic Document Studio",
+        "width": 1600,
+        "height": 1000,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true,
+        "center": true,
+        "maximized": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "publisher": "Nayhein.com",
+    "category": "Productivity",
+    "shortDescription": "Agentic document editor for PDF, DOCX & Markdown.",
+    "longDescription": "WoRe by Nayhein.com — read and edit PDF, DOCX and Markdown with an AI agent in the loop. Bring your own OpenAI- or Anthropic-compatible endpoint.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "perMachine"
+      }
+    }
+  }
+}

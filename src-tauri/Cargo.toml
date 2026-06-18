@@ -1,0 +1,29 @@
+[package]
+name = "wore"
+description = "WoRe — an agentic document editor by Nayhein.com"
+authors = ["Nayhein.com"]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "wore_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# This feature is used for production builds or when a dev server is not specified,
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+panic = "abort"
+strip = true
+opt-level = 2
