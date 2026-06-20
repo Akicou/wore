@@ -304,5 +304,3 @@ export const AI_PRESETS: AIPreset[] = [
 ];
 
 export const SELECTION_PRESETS = AI_PRESETS.filter((p) => p.mode === "selection");
-export const INSERT_PRESETS = AI_PRESETS.filter((p) => p.mode === "insert");
-export const DOCUMENT_PRESETS = AI_PRESETS.filter((p) => p.mode === "document");

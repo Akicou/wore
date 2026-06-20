@@ -62,9 +62,3 @@ export async function pdfToDocx(data: ArrayBuffer, title = "Converted Document")
 
   return Packer.toBlob(doc);
 }
-
-/** Extract a compact plain-text snapshot of a PDF for AI context. */
-export async function pdfContextText(data: ArrayBuffer, maxChars = 24000): Promise<string> {
-  const { total } = await extractPdfText(data);
-  return total.length > maxChars ? total.slice(0, maxChars) + "\n…[truncated]" : total;
-}

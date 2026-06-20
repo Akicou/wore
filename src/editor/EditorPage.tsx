@@ -96,7 +96,6 @@ export function EditorPage() {
   const formats = useFormats(editorRef);
   const [selection, setSelection] = useState<SelectionTarget | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
-  const [panelQuestion, setPanelQuestion] = useState<{ q: string; n: number } | null>(null);
   const [panelReference, setPanelReference] = useState<{ text: string; n: number } | null>(null);
   const [previewMenu, setPreviewMenu] = useState<{ x: number; y: number; text: string; range: Range } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -322,13 +321,6 @@ export function EditorPage() {
 
   const openSelectionChat = useCallback((t: SelectionTarget) => setSelection(t), []);
   const closeSelectionChat = useCallback(() => setSelection(null), []);
-  const askAssistant = useCallback(
-    (q: string) => {
-      setPanelOpen(true);
-      setPanelQuestion({ q, n: Date.now() });
-    },
-    []
-  );
 
   const addChatReference = useCallback((text: string) => {
     setPanelOpen(true);
@@ -438,15 +430,13 @@ export function EditorPage() {
       selection,
       openSelectionChat,
       closeSelectionChat,
-      askAssistant,
       addChatReference,
       doc,
       content,
       setContent,
       profile,
-      busy: false,
     }),
-    [getHTML, getDocumentText, getDocumentImages, setHTML, focus, sync, formats, selection, openSelectionChat, closeSelectionChat, askAssistant, addChatReference, doc, content, profile]
+    [getHTML, getDocumentText, getDocumentImages, setHTML, focus, sync, formats, selection, openSelectionChat, closeSelectionChat, addChatReference, doc, content, profile]
   );
 
   /* -------------------------------- export --------------------------------- */
@@ -733,7 +723,7 @@ export function EditorPage() {
           {/* AI side panel */}
           {panelOpen && (
             <aside className="no-print hidden w-[380px] shrink-0 border-l border-border md:flex md:flex-col">
-              <AIPanel question={panelQuestion?.q ?? null} reference={panelReference} />
+              <AIPanel reference={panelReference} />
             </aside>
           )}
         </div>

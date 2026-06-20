@@ -64,14 +64,3 @@ export async function idbDel(key: string): Promise<void> {
     tx.onerror = () => reject(tx.error);
   });
 }
-
-export async function idbKeys(): Promise<string[]> {
-  const db = await getDB();
-  if (!db) return [...mem.keys()];
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const req = tx.objectStore(STORE).getAllKeys();
-    req.onsuccess = () => resolve((req.result as string[]).filter((k) => typeof k === "string"));
-    req.onerror = () => reject(req.error);
-  });
-}

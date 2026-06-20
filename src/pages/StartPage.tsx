@@ -39,7 +39,7 @@ import type { DocFormat, RecentDoc } from "@/lib/store";
 import { useStore } from "@/lib/store";
 import { newDoc, saveDoc, importFile, deleteDoc } from "@/lib/documents/manager";
 import { starterMarkdown, markdownToHtml } from "@/lib/documents/markdown";
-import { formatBytes, humanize, timeAgo, cn } from "@/lib/utils";
+import { formatBytes, timeAgo, cn } from "@/lib/utils";
 
 const ACCEPT = ".md,.markdown,.txt,.html,.htm,.docx,.pdf";
 

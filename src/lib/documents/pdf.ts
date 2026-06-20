@@ -59,29 +59,6 @@ export interface RenderedPage {
   height: number;
 }
 
-/** Render a single PDF page to a PNG data URL (for the PDF preview). */
-export async function renderPdfPage(
-  data: ArrayBuffer,
-  pageNum: number,
-  scale = 1.4
-): Promise<RenderedPage> {
-  const doc = await loadPdf(data);
-  const page = await doc.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.floor(viewport.width);
-  canvas.height = Math.floor(viewport.height);
-  const ctx = canvas.getContext("2d")!;
-  // White background (transparent PDFs read better on paper).
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
-  const dataUrl = canvas.toDataURL("image/png");
-  page.cleanup();
-  await doc.destroy();
-  return { dataUrl, width: canvas.width, height: canvas.height };
-}
-
 /** Render many pages (with a callback for progress). */
 export async function renderPdfPages(
   data: ArrayBuffer,

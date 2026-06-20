@@ -39,15 +39,12 @@ export interface EditorContextValue {
   selection: SelectionTarget | null;
   openSelectionChat: (t: SelectionTarget) => void;
   closeSelectionChat: () => void;
-  /** open the side AI panel focused on a question */
-  askAssistant: (q: string) => void;
   /** attach selected document text to the assistant composer */
   addChatReference: (text: string) => void;
   doc: StoredDoc | null;
   content: string;
   setContent: (html: string) => void;
   profile: AIProfile | undefined;
-  busy: boolean;
 }
 
 export const EditorContext = createContext<EditorContextValue | null>(null);

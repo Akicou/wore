@@ -1,6 +1,5 @@
 import type { AIProfile, ChatImagePart, ChatMessage } from "./ai";
-import { chat, chatStream, modelReasoningCapable } from "./ai";
-import { htmlToPlainText } from "./documents/html";
+import { chatStream, modelReasoningCapable } from "./ai";
 import { markdownToHtml } from "./documents/markdown";
 
 export const WORE_SYSTEM = `You are WoRe, an in-document writing agent embedded in the WoRe editor by Nayhein.com.
@@ -69,11 +68,6 @@ export function docChatMessages({
   ];
 }
 
-/** Convert a free-form instruction + preset hint into a prompt. */
-export function buildInstruction(hint: string, custom: string): string {
-  return custom.trim() ? custom.trim() : hint;
-}
-
 /** Stream a selection edit. */
 export async function* streamSelectionEdit(
   profile: AIProfile,
@@ -96,21 +90,6 @@ export async function* streamSelectionEdit(
   }
 }
 
-/** Non-streaming doc answer. */
-export async function askDocument(
-  profile: AIProfile,
-  args: { question: string; docContext: string; history: ChatMessage[]; model?: string; signal?: AbortSignal }
-): Promise<string> {
-  const messages = docChatMessages(args);
-  const model = args.model ?? profile.defaultChatModel;
-  const res = await chat(profile, messages, {
-    model: args.model,
-    reasoning: modelReasoningCapable(profile, model),
-    signal: args.signal,
-  });
-  return res.text;
-}
-
 /** Convert a markdown-ish AI result into HTML safe to insert into the editor. */
 export function resultToInsertHtml(markdownResult: string): string {
   const html = markdownToHtml(markdownResult.trim());
@@ -126,5 +105,3 @@ export function resultToInsertHtml(markdownResult: string): string {
   }
   return html;
 }
-
-export { htmlToPlainText };

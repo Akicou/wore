@@ -695,25 +695,11 @@ export function modelTagFromId(id: string): AIModel {
    API-key discovery (Tauri desktop env vars)
 -------------------------------------------------------------------------- */
 
-/** Environment variables that map to each preset provider. */
-export const ENV_KEY_MAP: Record<string, string[]> = {
-  OpenAI: ["OPENAI_API_KEY"],
-  Anthropic: ["ANTHROPIC_API_KEY"],
-  OpenRouter: ["OPENROUTER_API_KEY"],
-  "Local (Ollama)": [],
-  "LM Studio": [],
-};
-
 export interface EnvKeyResult {
   profileName: string;
   key: string;
   source: string;
 }
-
-try {
-  // tsconfig may not import @tauri-apps/api directly; guarded by dynamic import
-  void 0;
-} catch {}
 
 /** Ask the Tauri host for known API keys. Falls back to empty on web. */
 export async function scanEnvKeys(): Promise<EnvKeyResult[]> {

@@ -84,10 +84,8 @@ const DOC_ACTIONS = [
 ] as const;
 
 export function AIPanel({
-  question,
   reference,
 }: {
-  question: string | null;
   reference?: { text: string; n: number } | null;
 }) {
   const ctx = useEditor();
@@ -184,14 +182,6 @@ export function AIPanel({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
-
-  // respond to a question pushed from elsewhere (e.g. command palette)
-  useEffect(() => {
-    if (question) {
-      send(question);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question]);
 
   useEffect(() => {
     if (reference?.text) {
