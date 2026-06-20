@@ -11,7 +11,6 @@ use std::{
     fs::{self, OpenOptions},
     io::Write,
     path::PathBuf,
-    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -326,19 +325,31 @@ fn scan_env_keys() -> Vec<EnvKeyResult> {
 fn read_windows_env_from_registry(name: &str) -> Option<String> {
     // Installed apps launched from Start Menu may not inherit shell env vars.
     // Fall back to persistent user/machine environment registry values.
-    for root in ["HKCU\\Environment", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"] {
-        let out = Command::new("reg").args(["query", root, "/v", name]).output().ok()?;
-        if !out.status.success() {
+    //
+    // We read the registry directly via the native API instead of shelling out
+    // to `reg.exe`. Spawning dozens of console processes in a tight loop (one per
+    // provider key × root) was both slow and fragile: rapid CreateProcess calls
+    // from the GUI host intermittently failed DLL init (0xc0000142), surfacing a
+    // "reg.exe - Application Error" dialog and flashing console windows.
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    let roots = [
+        (HKEY_CURRENT_USER, "Environment"),
+        (
+            HKEY_LOCAL_MACHINE,
+            "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+        ),
+    ];
+    for (hkey, subkey) in roots {
+        let Ok(env_key) = RegKey::predef(hkey).open_subkey(subkey) else {
             continue;
-        }
-        let text = String::from_utf8_lossy(&out.stdout);
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with(name) {
-                let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                if parts.len() >= 3 {
-                    return Some(parts[2..].join(" "));
-                }
+        };
+        // get_value handles REG_SZ and REG_EXPAND_SZ, including values with spaces.
+        if let Ok(value) = env_key.get_value::<String, _>(name) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
             }
         }
     }

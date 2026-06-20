@@ -387,19 +387,10 @@ function ProfileEditor({
         </Field>
       </div>
 
-      <Field label="Extra headers (JSON)" hint="e.g. OpenRouter HTTP-Referer / X-Title.">
-        <Textarea
-          className="font-mono text-xs min-h-[64px]"
-          value={JSON.stringify(draft.extraHeaders ?? {}, null, 2)}
-          onChange={(e) => {
-            try {
-              set("extraHeaders", JSON.parse(e.target.value || "{}"));
-            } catch {
-              /* keep editing */
-            }
-          }}
-        />
-      </Field>
+      <ExtraHeadersField
+        value={draft.extraHeaders}
+        onCommit={(v) => set("extraHeaders", v)}
+      />
 
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -446,6 +437,75 @@ function ProfileEditor({
 }
 
 type AIModelLite = AIProfile["models"][number];
+
+/**
+ * Extra-headers editor. Keeps the raw text in local state so partial/invalid
+ * JSON can be typed freely (a controlled value derived from JSON.stringify would
+ * revert every intermediate keystroke). Parses and commits on blur; shows an
+ * inline error while the text is invalid.
+ */
+function ExtraHeadersField({
+  value,
+  onCommit,
+}: {
+  value: Record<string, string> | undefined;
+  onCommit: (v: Record<string, string>) => void;
+}) {
+  const serialize = (v: Record<string, string> | undefined) =>
+    JSON.stringify(v ?? {}, null, 2);
+  const [text, setText] = useState(() => serialize(value));
+  const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
+
+  // Re-sync when the profile's value changes externally (e.g. switching
+  // profiles or model detection), but never clobber what the user is typing.
+  useEffect(() => {
+    if (!focused) {
+      setText(serialize(value));
+      setError(null);
+    }
+  }, [value, focused]);
+
+  const commit = () => {
+    setFocused(false);
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setError(null);
+      onCommit({});
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("Headers must be a JSON object.");
+      }
+      setError(null);
+      onCommit(parsed as Record<string, string>);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  return (
+    <Field
+      label="Extra headers (JSON)"
+      hint="e.g. OpenRouter HTTP-Referer / X-Title."
+    >
+      <Textarea
+        className={cn(
+          "font-mono text-xs min-h-[64px]",
+          error && "border-destructive focus-visible:ring-destructive"
+        )}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={commit}
+        spellCheck={false}
+      />
+      {error && <p className="text-[11px] text-destructive">{error}</p>}
+    </Field>
+  );
+}
 
 function Field({
   label,
