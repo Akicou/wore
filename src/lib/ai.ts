@@ -1,4 +1,5 @@
 import { writeError, writeLog } from "./log";
+import { httpFetch, describeNetworkError } from "./http";
 
 /*
   WoRe AI engine
@@ -198,12 +199,12 @@ async function openaiChat(
   if (o.reasoning) {
     body.reasoning_effort = o.reasoningEffort ?? "medium";
   }
-  const res = await fetch(`${cleanBase(p.baseUrl)}/chat/completions`, {
+  const res = await httpFetch(`${cleanBase(p.baseUrl)}/chat/completions`, {
     method: "POST",
     headers: openaiHeaders(p),
     body: JSON.stringify(body),
     signal: o.signal,
-  });
+  }).catch((e) => { throw new Error(describeNetworkError(e, cleanBase(p.baseUrl))); });
   if (!res.ok) throw await httpError(res);
   const json = await res.json();
   const text = json?.choices?.[0]?.message?.content ?? "";
@@ -224,12 +225,12 @@ async function* openaiStream(
   };
   if (o.reasoning) body.reasoning_effort = o.reasoningEffort ?? "medium";
 
-  const res = await fetch(`${cleanBase(p.baseUrl)}/chat/completions`, {
+  const res = await httpFetch(`${cleanBase(p.baseUrl)}/chat/completions`, {
     method: "POST",
     headers: { ...openaiHeaders(p), Accept: "text/event-stream" },
     body: JSON.stringify(body),
     signal: o.signal,
-  });
+  }).catch((e) => { throw new Error(describeNetworkError(e, cleanBase(p.baseUrl))); });
   if (!res.ok || !res.body) throw await httpError(res);
 
   let buf = "";
@@ -305,12 +306,12 @@ async function anthropicChat(
     // reasoning requires temperature=1 in Anthropic
     body.temperature = 1;
   }
-  const res = await fetch(`${cleanBase(p.baseUrl)}/messages`, {
+  const res = await httpFetch(`${cleanBase(p.baseUrl)}/messages`, {
     method: "POST",
     headers: anthropicHeaders(p),
     body: JSON.stringify(body),
     signal: o.signal,
-  });
+  }).catch((e) => { throw new Error(describeNetworkError(e, cleanBase(p.baseUrl))); });
   if (!res.ok) throw await httpError(res);
   const json = await res.json();
   const text = (json?.content ?? [])
@@ -344,12 +345,12 @@ async function* anthropicStream(
     };
     body.temperature = 1;
   }
-  const res = await fetch(`${cleanBase(p.baseUrl)}/messages`, {
+  const res = await httpFetch(`${cleanBase(p.baseUrl)}/messages`, {
     method: "POST",
     headers: { ...anthropicHeaders(p), Accept: "text/event-stream" },
     body: JSON.stringify(body),
     signal: o.signal,
-  });
+  }).catch((e) => { throw new Error(describeNetworkError(e, cleanBase(p.baseUrl))); });
   if (!res.ok || !res.body) throw await httpError(res);
 
   let buf = "";
@@ -404,7 +405,7 @@ export async function generateImage(
 
   // 1) Try the OpenAI-style images endpoint (works for OpenAI DALL-E and some OpenRouter models)
   try {
-    const res = await fetch(`${base}/images/generations`, {
+    const res = await httpFetch(`${base}/images/generations`, {
       method: "POST",
       headers: openaiHeaders(p),
       body: JSON.stringify({
@@ -558,7 +559,8 @@ async function detectOpenAiModels(p: AIProfile): Promise<AIModel[]> {
     if (p.apiKey && !isLocalPlaceholderKey(p.apiKey)) headers.Authorization = `Bearer ${p.apiKey}`;
 
     await writeLog("debug", "models", "GET /models", { base, headers: Object.keys(headers) });
-    const res = await fetch(`${base}/models`, { headers, signal: ac.signal });
+    const res = await httpFetch(`${base}/models`, { headers, signal: ac.signal })
+      .catch((e) => { throw new Error(describeNetworkError(e, base)); });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       throw new Error(`Could not list models (${res.status}): ${detail.slice(0, 200)}`);
@@ -593,7 +595,8 @@ async function detectAnthropicModels(p: AIProfile): Promise<AIModel[]> {
   const timeout = window.setTimeout(() => ac.abort(), 15000);
   try {
     // Anthropic requires x-api-key + anthropic-version, NOT Bearer auth.
-    const res = await fetch(`${base}/models`, { headers: anthropicHeaders(p), signal: ac.signal });
+    const res = await httpFetch(`${base}/models`, { headers: anthropicHeaders(p), signal: ac.signal })
+      .catch((e) => { throw new Error(describeNetworkError(e, base)); });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
       throw new Error(`Could not list Anthropic models (${res.status}): ${detail.slice(0, 200)}`);
@@ -618,7 +621,8 @@ async function detectOpenRouterModels(p: AIProfile): Promise<AIModel[]> {
   const headers: Record<string, string> = {};
   if (p.apiKey) headers.Authorization = `Bearer ${p.apiKey}`;
   await writeLog("debug", "models", "GET OpenRouter /models", { baseUrl: cleanBase(p.baseUrl), hasApiKey: !!p.apiKey });
-  const res = await fetch(`${cleanBase(p.baseUrl)}/models`, { headers });
+  const res = await httpFetch(`${cleanBase(p.baseUrl)}/models`, { headers })
+    .catch((e) => { throw new Error(describeNetworkError(e, cleanBase(p.baseUrl))); });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`Could not list OpenRouter models (${res.status}): ${detail.slice(0, 200)}`);

@@ -1,7 +1,7 @@
 {
   "name": "wore",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "WoRe — an agentic document editor by Nayhein.com for PDF, DOCX & Markdown.",
   "type": "module",
   "author": "Nayhein.com",
@@ -24,6 +24,7 @@
     "@radix-ui/react-tabs": "^1.1.12",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-http": "^2.5.0",
     "@types/turndown": "^5.0.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

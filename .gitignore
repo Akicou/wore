@@ -28,6 +28,8 @@ bun-debug.log*
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.claude/
+CLAUDE.md
 .DS_Store
 Thumbs.db
 *.suo

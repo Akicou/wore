@@ -30,12 +30,15 @@ export function AIPicker({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [probingVision, setProbingVision] = useState(false);
+  const [status, setStatus] = useState<{ kind: "success" | "warn" | "error"; text: string } | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const currentModel = active?.defaultChatModel || "—";
 
   const probeVisionForCurrent = async () => {
-    if (!active || !active.defaultChatModel) return;
+    if (!active || !active.defaultChatModel || probingVision) return;
     setProbingVision(true);
+    setStatus(null);
     try {
       const result = await probeModelVision(active, active.defaultChatModel);
       const existing = active.models.some((m) => m.id === active.defaultChatModel);
@@ -61,16 +64,26 @@ export function AIPicker({ onOpenSettings }: { onOpenSettings?: () => void }) {
             },
           ];
       updateProfile(active.id, { models });
-      if (result.vision) toast.success("Vision supported", { description: active.defaultChatModel });
-      else toast.warning("Vision not supported", { description: result.message });
+      if (result.vision) {
+        setStatus({ kind: "success", text: `Vision OK · ${active.defaultChatModel}` });
+        toast.success("Vision supported", { description: active.defaultChatModel });
+      } else {
+        setStatus({ kind: "warn", text: `No vision: ${result.message}` });
+        toast.warning("Vision not supported", { description: result.message });
+      }
+    } catch (e) {
+      const msg = (e as Error).message;
+      setStatus({ kind: "error", text: msg });
+      toast.error("Vision probe failed", { description: msg });
     } finally {
       setProbingVision(false);
     }
   };
 
   const detectForActive = async () => {
-    if (!active) return;
+    if (!active || detecting) return;
     setDetecting(true);
+    setStatus(null);
     try {
       const models = await detectModels(active);
       const deduped = models.filter((m, i, self) => m.id && self.findIndex((x) => x.id === m.id) === i);
@@ -80,11 +93,14 @@ export function AIPicker({ onOpenSettings }: { onOpenSettings?: () => void }) {
         : deduped.find((m) => !m.imageGen)?.id ?? deduped[0].id;
       const defaultImageModel = deduped.find((m) => m.imageGen)?.id ?? active.defaultImageModel;
       updateProfile(active.id, { models: deduped, defaultChatModel, defaultImageModel });
+      setStatus({ kind: "success", text: `Detected ${deduped.length} model${deduped.length === 1 ? "" : "s"}` });
       toast.success(`Detected ${deduped.length} model${deduped.length === 1 ? "" : "s"}`, {
         description: `Updated ${active.name}`,
       });
     } catch (e) {
-      toast.error("Model detection failed", { description: (e as Error).message });
+      const msg = (e as Error).message;
+      setStatus({ kind: "error", text: msg });
+      toast.error("Model detection failed", { description: msg });
     } finally {
       setDetecting(false);
     }
@@ -92,7 +108,16 @@ export function AIPicker({ onOpenSettings }: { onOpenSettings?: () => void }) {
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          // Never close while an async operation is in-flight; otherwise the
+          // user loses the loading state and inline result.
+          if (!open && (detecting || probingVision)) return;
+          setMenuOpen(open);
+          if (open) setStatus(null);
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="gap-2 max-w-[260px]">
             <Sparkles className="size-4 text-accent-strong" />
@@ -103,7 +128,18 @@ export function AIPicker({ onOpenSettings }: { onOpenSettings?: () => void }) {
             <ChevronDown className="size-3.5 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuContent
+          align="end"
+          className="w-64"
+          // Block Radix's auto-focus-on-close behavior from firing in the
+          // middle of an async op; the open-state guard above handles closing.
+          onInteractOutside={(e) => {
+            if (detecting || probingVision) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (detecting || probingVision) e.preventDefault();
+          }}
+        >
           <DropdownMenuLabel>Profile</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={activeId ?? ""} onValueChange={setActive}>
             {profiles.map((p) => (
@@ -135,14 +171,39 @@ export function AIPicker({ onOpenSettings }: { onOpenSettings?: () => void }) {
                   )}
                 </div>
               )}
-              <DropdownMenuItem disabled={detecting} onClick={detectForActive}>
+              <DropdownMenuItem
+                disabled={detecting}
+                onSelect={(e) => {
+                  // Keep menu open so the user can see progress + result.
+                  e.preventDefault();
+                  void detectForActive();
+                }}
+              >
                 <RefreshCw className={cn("size-4", detecting && "animate-spin")} />
                 {detecting ? "Detecting…" : "Detect models"}
               </DropdownMenuItem>
-              <DropdownMenuItem disabled={probingVision || !active.defaultChatModel} onClick={probeVisionForCurrent}>
+              <DropdownMenuItem
+                disabled={probingVision || !active.defaultChatModel}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  void probeVisionForCurrent();
+                }}
+              >
                 <Eye className={cn("size-4", probingVision && "animate-pulse")} />
                 {probingVision ? "Testing vision…" : "Reassess vision"}
               </DropdownMenuItem>
+              {status && (
+                <div
+                  className={cn(
+                    "mx-2 my-1 rounded-md border px-2 py-1.5 text-[11px] leading-snug",
+                    status.kind === "success" && "border-success/40 bg-success/10 text-success",
+                    status.kind === "warn" && "border-amber-500/40 bg-amber-500/10 text-amber-600",
+                    status.kind === "error" && "border-destructive/40 bg-destructive/10 text-destructive"
+                  )}
+                >
+                  {status.text}
+                </div>
+              )}
             </>
           )}
 
