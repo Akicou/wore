@@ -7,8 +7,10 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowUp,
   Bot,
+  Brain,
   Check,
   CheckSquare,
+  ChevronDown,
   Clipboard,
   Copy,
   Eraser,
@@ -33,7 +35,8 @@ import { Textarea } from "@/components/ui/form";
 import { Badge } from "@/components/ui/badge";
 import { useEditor } from "./context";
 import { docChatMessages } from "@/lib/ai-actions";
-import { chat, chatStream } from "@/lib/ai";
+import { chat, chatStream, modelReasoningCapable } from "@/lib/ai";
+import { useStore } from "@/lib/store";
 import type { ChatImagePart, ChatMessage } from "@/lib/ai";
 import { insertHTML } from "@/lib/editor";
 import { checkDocumentPath, readDocumentTextFromPath } from "@/lib/documents/manager";
@@ -89,6 +92,7 @@ export function AIPanel({
 }) {
   const ctx = useEditor();
   const profile = ctx.profile;
+  const showThinking = useStore((s) => s.showThinking);
   const chatStorageKey = useMemo(() => `wore.aiChats.${ctx.doc?.id ?? "global"}`, [ctx.doc?.id]);
   const [sessions, setSessions] = useState<ChatSession[]>(() => [newChatSession()]);
   const [activeSessionId, setActiveSessionId] = useState("");
@@ -287,6 +291,16 @@ export function AIPanel({
     }
     const originalHtml = ctx.getHTML();
     const docText = ctx.getDocumentText();
+    // The whole-document edit replaces the entire body with the model's reply.
+    // If we truncated the input, accepting would silently delete the tail — so
+    // refuse documents that don't fit instead of corrupting them.
+    const MAX_EDIT_HTML = 60000;
+    if (originalHtml.length > MAX_EDIT_HTML) {
+      toast.error("Document too large for whole-document edit", {
+        description: "Select a section and use the selection editor (Ctrl+P) instead.",
+      });
+      return;
+    }
     setProposingEdit(true);
     setPendingEdit(null);
     const ac = new AbortController();
@@ -300,7 +314,7 @@ export function AIPanel({
         },
         {
           role: "user",
-          content: `Instruction:\n${instruction}\n\nCurrent document plain text context:\n"""\n${docText.slice(0, 12000)}\n"""\n\nCurrent document HTML to edit:\n"""html\n${originalHtml.slice(0, 60000)}\n"""\n\nReturn the full updated HTML fragment only.`,
+          content: `Instruction:\n${instruction}\n\nCurrent document plain text context:\n"""\n${docText.slice(0, 12000)}\n"""\n\nCurrent document HTML to edit:\n"""html\n${originalHtml.slice(0, MAX_EDIT_HTML)}\n"""\n\nReturn the full updated HTML fragment only.`,
         },
       ]);
       const proposedHtml = cleanModelHtml(res);
@@ -370,17 +384,19 @@ export function AIPanel({
 
     const reply = docChatMessages({ question: apiPrompt, docContext, history: apiHistory, images: visionImages });
     let acc = "";
+    let reasoningAcc = "";
     try {
       for await (const ev of chatStream(profile, reply, {
         model: profile.defaultChatModel,
-        reasoning: true,
+        reasoning: modelReasoningCapable(profile, profile.defaultChatModel),
         signal: ac.signal,
       })) {
-        if (ev.delta) {
-          acc += ev.delta;
+        if (ev.reasoning) reasoningAcc += ev.reasoning;
+        if (ev.delta || ev.reasoning) {
+          if (ev.delta) acc += ev.delta;
           updateMessages((m) => {
             const next = [...m];
-            next[next.length - 1] = { role: "assistant", content: acc };
+            next[next.length - 1] = { role: "assistant", content: acc, reasoning: reasoningAcc || undefined };
             return next;
           });
         }
@@ -561,6 +577,7 @@ export function AIPanel({
               key={i}
               msg={m}
               thinking={isLastAssistant}
+              showThinking={showThinking}
               canRegenerate={canRegenerate}
               onRegenerate={regenerate}
               onDelete={() => updateMessages((current) => current.filter((_, idx) => idx !== i))}
@@ -838,18 +855,21 @@ function FileRefChip({ refInfo }: { refInfo: FileRef }) {
 function MessageBubble({
   msg,
   thinking,
+  showThinking,
   canRegenerate,
   onRegenerate,
   onDelete,
 }: {
   msg: Msg;
   thinking?: boolean;
+  showThinking?: boolean;
   canRegenerate?: boolean;
   onRegenerate?: () => void;
   onDelete: () => void;
 }) {
   const ctx = useEditor();
   const [copied, setCopied] = useState(false);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
   const isUser = msg.role === "user";
 
   const copy = async () => {
@@ -886,15 +906,33 @@ function MessageBubble({
       >
         {isUser ? (
           <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-        ) : thinking ? (
+        ) : thinking && !msg.content ? (
           <div className="flex items-center gap-2 py-0.5 text-xs text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin text-accent-strong" />
             <span className="ai-text font-medium">Thinking…</span>
           </div>
         ) : (
-          <div className="prose-chat break-words">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "…"}</ReactMarkdown>
-          </div>
+          <>
+            {showThinking && msg.reasoning && (
+              <div className="mb-1.5 overflow-hidden rounded-md border border-border/60 bg-background/50">
+                <button
+                  className="flex w-full items-center gap-1.5 px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted"
+                  onClick={() => setReasoningOpen((s) => !s)}
+                >
+                  <Brain className="size-3" /> Thinking
+                  <ChevronDown className={cn("ml-auto size-3 transition-transform", reasoningOpen && "rotate-180")} />
+                </button>
+                {reasoningOpen && (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap border-t border-border/60 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                    {msg.reasoning}
+                  </pre>
+                )}
+              </div>
+            )}
+            <div className="prose-chat break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content || "…"}</ReactMarkdown>
+            </div>
+          </>
         )}
         <div className="absolute -bottom-2 right-2 hidden items-center gap-1 group-hover:flex">
           <button

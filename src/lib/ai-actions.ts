@@ -1,5 +1,5 @@
 import type { AIProfile, ChatImagePart, ChatMessage } from "./ai";
-import { chat, chatStream } from "./ai";
+import { chat, chatStream, modelReasoningCapable } from "./ai";
 import { htmlToPlainText } from "./documents/html";
 import { markdownToHtml } from "./documents/markdown";
 
@@ -81,10 +81,11 @@ export async function* streamSelectionEdit(
   opts: { onReasoning?: (t: string) => void } = {}
 ) {
   const messages = selectionMessages(args);
+  const model = args.model ?? profile.defaultChatModel;
   let acc = "";
   for await (const ev of chatStream(profile, messages, {
     model: args.model,
-    reasoning: true,
+    reasoning: modelReasoningCapable(profile, model),
     signal: args.signal,
   })) {
     if (ev.reasoning) opts.onReasoning?.(ev.reasoning);
@@ -101,7 +102,12 @@ export async function askDocument(
   args: { question: string; docContext: string; history: ChatMessage[]; model?: string; signal?: AbortSignal }
 ): Promise<string> {
   const messages = docChatMessages(args);
-  const res = await chat(profile, messages, { model: args.model, reasoning: true, signal: args.signal });
+  const model = args.model ?? profile.defaultChatModel;
+  const res = await chat(profile, messages, {
+    model: args.model,
+    reasoning: modelReasoningCapable(profile, model),
+    signal: args.signal,
+  });
   return res.text;
 }
 

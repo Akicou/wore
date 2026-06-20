@@ -124,9 +124,11 @@ export function EditorPage() {
         return;
       }
       let loaded = d;
-      if (d.format === "docx" && !d.contentHtml.includes("wore-docx-import")) {
+      let docxHasSource = false;
+      if (d.format === "docx") {
         const bytes = await getSourceBytes(d.id);
-        if (bytes && !cancelled) {
+        docxHasSource = !!bytes;
+        if (bytes && !d.contentHtml.includes("wore-docx-import") && !cancelled) {
           const visualHtml = await docxToHtml(bytes.slice(0)).catch(() => "");
           if (visualHtml) {
             loaded = { ...d, contentHtml: visualHtml, updatedAt: Date.now() };
@@ -134,11 +136,14 @@ export function EditorPage() {
           }
         }
       }
+      if (cancelled) return;
       setDoc(loaded);
       setContent(loaded.contentHtml);
       setTitle(loaded.title);
       setSourceTextContext("");
-      setView(loaded.format === "docx" ? "preview" : "edit");
+      // Word preview needs the original bytes; a freshly created DOCX has none,
+      // so default it to edit mode instead of an empty "preview unavailable".
+      setView(loaded.format === "docx" && docxHasSource ? "preview" : "edit");
       addTab(d.id);
       touchRecent(d.id);
       setLoading(false);
@@ -155,7 +160,42 @@ export function EditorPage() {
   docRef.current = doc;
   const recentRef = useRef(recent);
   recentRef.current = recent;
+  const titleRef = useRef(title);
+  titleRef.current = title;
   const skipFirst = useRef(true);
+
+  const persistNow = useCallback(async () => {
+    const current = docRef.current;
+    if (!current) {
+      setSaving(false);
+      return;
+    }
+    setSaving(true);
+    const updated: StoredDoc = {
+      ...current,
+      title: titleRef.current,
+      contentHtml: editorRef.current?.innerHTML ?? current.contentHtml,
+      updatedAt: Date.now(),
+    };
+    await saveDoc(updated);
+    setDoc(updated);
+    const rec = recentRef.current.find((r) => r.id === updated.id);
+    const meta: RecentDoc = {
+      id: updated.id,
+      title: updated.title,
+      format: updated.format,
+      createdAt: updated.createdAt,
+      updatedAt: updated.updatedAt,
+      openedAt: rec?.openedAt ?? Date.now(),
+      size: rec?.size ?? new Blob([updated.contentHtml]).size,
+      wordCount: countWords(updated.contentHtml),
+      pinned: rec?.pinned,
+      hasSource: rec?.hasSource,
+    };
+    upsertRecent(meta);
+    setSaving(false);
+    setSavedAt(Date.now());
+  }, [upsertRecent]);
 
   useEffect(() => {
     if (autosaveMs === 0) return;
@@ -165,36 +205,23 @@ export function EditorPage() {
       return;
     }
     setSaving(true);
-    const t = setTimeout(async () => {
-      const current = docRef.current;
-      if (!current) return;
-      const updated: StoredDoc = {
-        ...current,
-        title,
-        contentHtml: editorRef.current?.innerHTML ?? content,
-        updatedAt: Date.now(),
-      };
-      await saveDoc(updated);
-      setDoc(updated);
-      const rec = recentRef.current.find((r) => r.id === updated.id);
-      const meta: RecentDoc = {
-        id: updated.id,
-        title: updated.title,
-        format: updated.format,
-        createdAt: updated.createdAt,
-        updatedAt: updated.updatedAt,
-        openedAt: rec?.openedAt ?? Date.now(),
-        size: rec?.size ?? new Blob([updated.contentHtml]).size,
-        wordCount: countWords(updated.contentHtml),
-        pinned: rec?.pinned,
-        hasSource: rec?.hasSource,
-      };
-      upsertRecent(meta);
-      setSaving(false);
-      setSavedAt(Date.now());
+    const t = setTimeout(() => {
+      persistNow();
     }, Math.max(800, autosaveMs));
     return () => clearTimeout(t);
-  }, [content, title, autosaveMs, upsertRecent]);
+  }, [content, title, autosaveMs, persistNow]);
+
+  // Manual save (Ctrl/Cmd+S) — the only way to persist when autosave is Off.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        persistNow().then(() => toast.success("Saved"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [persistNow]);
 
   /* ------------------------------- live stats ------------------------------ */
   useEffect(() => {
@@ -508,6 +535,7 @@ export function EditorPage() {
   }
 
   const { words, chars, mins } = stats;
+  const profileReady = !!profile && (!!profile.apiKey || /localhost|127\.0\.0\.1/.test(profile.baseUrl));
   const tabDocs = openTabs
     .map((tabId) => recent.find((r) => r.id === tabId) ?? (tabId === doc.id ? { id: doc.id, title, format: doc.format } : null))
     .filter(Boolean) as Array<{ id: string; title: string; format: StoredDoc["format"] }>;
@@ -630,7 +658,7 @@ export function EditorPage() {
 
         {/* body */}
         <div className="flex min-h-0 flex-1">
-          <main className="relative min-w-0 flex-1 overflow-auto bg-canvas">
+          <main className="print-area relative min-w-0 flex-1 overflow-auto bg-canvas">
             {view === "edit" ? (
               splitView ? (
                 <div className="grid min-h-full grid-cols-2 divide-x divide-border" style={{ zoom }}>
@@ -748,13 +776,13 @@ export function EditorPage() {
           <span>{mins} min read</span>
 
           <div className="ml-auto flex items-center gap-2">
-            {profile ? (
+            {profileReady ? (
               <span className="flex items-center gap-1">
-                <Sparkles className="size-3 text-accent-strong" /> {profile.name}
+                <Sparkles className="size-3 text-accent-strong" /> {profile!.name}
               </span>
             ) : (
               <button className="text-destructive" onClick={() => setSettingsOpen(true)}>
-                No profile — configure
+                {profile ? `${profile.name} — add API key` : "No profile — configure"}
               </button>
             )}
             <span>·</span>
@@ -1027,6 +1055,11 @@ function DocxPreview({
           <p className="font-medium text-foreground">Word preview unavailable</p>
           <p className="mt-1">{error}</p>
         </div>
+      )}
+      {!loading && !error && (
+        <p className="no-print mx-auto mb-3 max-w-[820px] text-center text-[11px] text-muted-foreground">
+          High-fidelity render of the original import. Edits made in Edit mode appear in exports, not here.
+        </p>
       )}
       <div ref={previewRef} className="wore-docx-preview mx-auto" />
     </div>

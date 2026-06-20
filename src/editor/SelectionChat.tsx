@@ -38,6 +38,7 @@ export function SelectionChat() {
   const [reasoning, setReasoning] = useState("");
   const [busy, setBusy] = useState(false);
   const [showReasoning, setShowReasoning] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -177,14 +178,40 @@ export function SelectionChat() {
                 <button
                   key={id}
                   disabled={busy}
-                  onClick={() => run(p.prompt.includes("{selection}") ? buildPrompt(p) : p.prompt)}
+                  onClick={() => runPreset(p)}
                   className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] transition-colors hover:border-accent/40 hover:bg-accent-soft disabled:opacity-50"
                 >
                   <Icon className="size-3" /> {p.label}
                 </button>
               );
             })}
+            <button
+              disabled={busy}
+              onClick={() => setShowAll((s) => !s)}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] transition-colors hover:border-accent/40 hover:bg-accent-soft disabled:opacity-50"
+            >
+              {showAll ? "Less" : "More…"}
+            </button>
           </div>
+
+          {showAll && (
+            <div className="flex max-h-44 flex-wrap gap-1 overflow-auto border-b border-border px-2.5 py-2">
+              {SELECTION_PRESETS.map((p) => {
+                const Icon = p.icon;
+                return (
+                  <button
+                    key={p.id}
+                    disabled={busy}
+                    title={p.description}
+                    onClick={() => runPreset(p)}
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] transition-colors hover:border-accent/40 hover:bg-accent-soft disabled:opacity-50"
+                  >
+                    <Icon className="size-3" /> {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* input */}
           <div className="p-2.5">
@@ -291,8 +318,16 @@ export function SelectionChat() {
     document.body
   );
 
-  function buildPrompt(p: (typeof SELECTION_PRESETS)[number]) {
-    return p.prompt.replace("{selection}", target!.text);
+  function runPreset(p: (typeof SELECTION_PRESETS)[number]) {
+    let prompt = p.prompt;
+    if (prompt.includes("{lang}")) {
+      const lang = window.prompt("Translate into which language?", "Spanish");
+      if (!lang) return;
+      prompt = prompt.split("{lang}").join(lang);
+    }
+    if (prompt.includes("{selection}")) prompt = prompt.replace("{selection}", target!.text);
+    setShowAll(false);
+    run(prompt);
   }
 }
 

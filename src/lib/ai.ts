@@ -94,7 +94,10 @@ export async function chat(
   opts: ChatOptions = {}
 ): Promise<ChatResult> {
   const model = opts.model ?? profile.defaultChatModel;
-  const maxTokens = opts.maxTokens ?? Math.max(16000, profile.maxTokens ?? 16384);
+  const base = opts.maxTokens ?? profile.maxTokens ?? 16384;
+  // Only force a large budget when reasoning is on, so thinking tokens never
+  // truncate the answer. Otherwise respect the user's configured limit.
+  const maxTokens = opts.reasoning ? Math.max(16000, base) : base;
 
   if (profile.flavor === "anthropic") {
     return anthropicChat(profile, messages, { ...opts, model, maxTokens });
@@ -109,7 +112,8 @@ export async function* chatStream(
   opts: ChatOptions = {}
 ): AsyncGenerator<{ delta: string; reasoning?: string; done: boolean }> {
   const model = opts.model ?? profile.defaultChatModel;
-  const maxTokens = opts.maxTokens ?? Math.max(16000, profile.maxTokens ?? 16384);
+  const base = opts.maxTokens ?? profile.maxTokens ?? 16384;
+  const maxTokens = opts.reasoning ? Math.max(16000, base) : base;
 
   if (profile.flavor === "anthropic") {
     yield* anthropicStream(profile, messages, { ...opts, model, maxTokens });
@@ -469,7 +473,7 @@ function tinyVisionProbePng(): string {
   return canvas.toDataURL("image/png");
 }
 
-/** Probe a model by sending a tiny 4×4 image. No error => vision-capable. */
+/** Probe a model by sending a tiny 32×32 image. No error => vision-capable. */
 export async function probeModelVision(
   p: AIProfile,
   model: string
@@ -488,7 +492,7 @@ export async function probeModelVision(
         {
           role: "user",
           content: [
-            { type: "text", text: "This is a tiny 32x32 probe image. Reply with exactly: ok" },
+            { type: "text", text: "This is a tiny 32×32 probe image. Reply with exactly: ok" },
             { type: "image", dataUrl: tinyVisionProbePng(), mimeType: "image/png", alt: "32x32 vision probe image" },
           ],
         },
@@ -520,9 +524,11 @@ export async function detectModels(p: AIProfile): Promise<AIModel[]> {
     hasApiKey: !!p.apiKey,
   });
   try {
-    const models = base.includes("openrouter.ai")
-      ? await detectOpenRouterModels(p)
-      : await detectOpenAiModels(p);
+    const models = p.flavor === "anthropic"
+      ? await detectAnthropicModels(p)
+      : base.includes("openrouter.ai")
+        ? await detectOpenRouterModels(p)
+        : await detectOpenAiModels(p);
     await writeLog("info", "models", "Detect models succeeded", {
       profile: p.name,
       baseUrl: base,
@@ -581,6 +587,33 @@ async function detectOpenAiModels(p: AIProfile): Promise<AIModel[]> {
   }
 }
 
+async function detectAnthropicModels(p: AIProfile): Promise<AIModel[]> {
+  const base = cleanBase(p.baseUrl);
+  const ac = new AbortController();
+  const timeout = window.setTimeout(() => ac.abort(), 15000);
+  try {
+    // Anthropic requires x-api-key + anthropic-version, NOT Bearer auth.
+    const res = await fetch(`${base}/models`, { headers: anthropicHeaders(p), signal: ac.signal });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`Could not list Anthropic models (${res.status}): ${detail.slice(0, 200)}`);
+    }
+    const json = await res.json().catch(() => null);
+    const data: Array<Record<string, any>> = Array.isArray(json) ? json : json?.data ?? [];
+    const models = data
+      .map((m) => (typeof m?.id === "string" ? m.id : ""))
+      .filter(Boolean)
+      .map((id) => modelTagFromId(id));
+    if (!models.length) throw new Error("No models returned by Anthropic.");
+    return models;
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw new Error(`Timed out listing Anthropic models from ${base}.`);
+    throw e;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 async function detectOpenRouterModels(p: AIProfile): Promise<AIModel[]> {
   const headers: Record<string, string> = {};
   if (p.apiKey) headers.Authorization = `Bearer ${p.apiKey}`;
@@ -617,6 +650,25 @@ async function detectOpenRouterModels(p: AIProfile): Promise<AIModel[]> {
 
 function isLocalEndpoint(baseUrl: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/i.test(baseUrl);
+}
+
+/**
+ * True when the given model actually supports reasoning/thinking. Prefer the
+ * explicit per-model flag (set by detection); otherwise fall back to id
+ * heuristics. Defaults to OFF so we never send reasoning params to models that
+ * reject them (e.g. gpt-4o, claude-3.5) which would 400 the whole request.
+ */
+export function modelReasoningCapable(
+  profile: Pick<AIProfile, "models">,
+  modelId: string
+): boolean {
+  const model = profile.models?.find((m) => m.id === modelId);
+  if (model && typeof model.reasoning === "boolean") return model.reasoning;
+  const lower = (modelId || "").toLowerCase();
+  return (
+    /\bo[134]\b|o\d+-mini|-r1\b|\br1-|reasoner|reasoning|thinking/i.test(lower) ||
+    /claude-?(3-7|3\.7|opus-4|sonnet-4|haiku-4|opus-?4|sonnet-?4)/i.test(lower)
+  );
 }
 
 function isLocalPlaceholderKey(key: string): boolean {

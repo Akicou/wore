@@ -22,18 +22,22 @@ export async function pdfToDocx(data: ArrayBuffer, title = "Converted Document")
     for (const raw of page.lines) {
       const line = raw.trim();
       if (!line) continue;
-      const isHeading = !titleSet
-        ? (titleSet = true) && line.length <= 90 && !/[.!?,;:]$/.test(line)
-        : (line.length <= 70 &&
-            /^[A-Z0-9][\w\s\-:'.,&()]*$/.test(line) &&
-            !/[.!?,;]$/.test(line) &&
-            line.split(" ").length <= 12);
 
-      if (!titleSet && line.length <= 90) {
+      // The first usable line becomes the document title (when it's short
+      // enough to plausibly be one).
+      if (!titleSet) {
         titleSet = true;
-        children.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, children: [new TextRun({ text: line, bold: true })] }));
-        continue;
+        if (line.length <= 90) {
+          children.push(new Paragraph({ heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER, children: [new TextRun({ text: line, bold: true })] }));
+          continue;
+        }
       }
+
+      const isHeading =
+        line.length <= 70 &&
+        /^[A-Z0-9][\w\s\-:'.,&()]*$/.test(line) &&
+        !/[.!?,;]$/.test(line) &&
+        line.split(" ").length <= 12;
 
       if (isHeading) {
         children.push(

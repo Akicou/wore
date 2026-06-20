@@ -103,7 +103,7 @@ export function StartPage() {
       {/* top-right nav */}
       <header className="absolute right-0 top-0 z-10 flex items-center gap-0.5 p-4">
         <Button variant="ghost" size="icon-sm" asChild className="text-muted-foreground hover:text-foreground">
-          <a href="https://github.com" target="_blank" rel="noreferrer" aria-label="GitHub">
+          <a href="https://github.com/Akicou/wore" target="_blank" rel="noreferrer" aria-label="GitHub">
             <Github className="size-4" />
           </a>
         </Button>
@@ -187,7 +187,7 @@ export function StartPage() {
           transition={{ duration: 0.4, delay: 0.22 }}
           className="mt-auto pt-12 text-[11px] text-muted-foreground"
         >
-          v0.1.0 · Local-first
+          v0.2.0 · Local-first
         </motion.footer>
       </main>
 
@@ -285,7 +285,7 @@ function RecentRow({
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <FormatIcon format={doc.format} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{humanize(doc.title)}</span>
+          <span className="block truncate text-sm font-medium">{doc.title || "Untitled"}</span>
           <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
             <span className="uppercase tracking-wider">{doc.format}</span>
             <span>·</span>

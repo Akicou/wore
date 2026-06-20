@@ -47,6 +47,7 @@ import {
   scanEnvKeys,
 } from "@/lib/ai";
 import { deleteDoc } from "@/lib/documents/manager";
+import { idbDel } from "@/lib/idb";
 import { cn } from "@/lib/utils";
 import { getLogPath, writeError } from "@/lib/log";
 
@@ -598,8 +599,10 @@ function DataTab() {
   const clearAll = async () => {
     for (const d of recent) {
       await deleteDoc(d.id);
+      await idbDel(`wore.aiChats.${d.id}`); // drop orphaned per-document chat history
       removeRecent(d.id);
     }
+    useStore.setState({ openTabs: [] });
     toast.success("Cleared all documents");
   };
 

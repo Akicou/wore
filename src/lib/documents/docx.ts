@@ -587,6 +587,37 @@ function quoteFontFamily(font: string): string {
 
 const INCH = 96; // CSS px per inch
 const DEFAULT_MARGIN_IN = 1;
+const TWIPS_PER_INCH = 1440; // Word page margins are expressed in twips.
+
+/**
+ * Collect the top-level block elements to emit, in document order.
+ *
+ * Imported DOCX content is wrapped as
+ *   <div class="wore-docx-import"><div class="wore-docx-style-host">…CSS…</div>…</div>
+ * with the real content deeply nested (section > article > p/h/table). Walking
+ * `body.children` would treat the whole wrapper as one block and dump the CSS as
+ * body text. Instead we strip the style host and pick the real block-level
+ * elements, skipping any nested inside a container we already handle (table,
+ * list, figure, blockquote, pre).
+ */
+function collectBlockElements(body: HTMLElement): HTMLElement[] {
+  body.querySelectorAll(".wore-docx-style-host, style, script").forEach((n) => n.remove());
+  const wrapper = body.querySelector<HTMLElement>(".wore-docx-import, .wore-docx");
+  if (!wrapper) return [...body.children] as HTMLElement[];
+
+  const HANDLED_CONTAINERS = "table,ul,ol,figure,blockquote,pre";
+  const blocks = [
+    ...wrapper.querySelectorAll<HTMLElement>("p,h1,h2,h3,h4,h5,h6,ul,ol,table,blockquote,pre,figure,img"),
+  ];
+  return blocks.filter((el) => {
+    // Skip elements nested inside a container that has its own handler.
+    const container = el.parentElement?.closest(HANDLED_CONTAINERS);
+    if (container && wrapper.contains(container)) return false;
+    // Skip a bare <img> that lives inside a <figure> (handled by figure branch).
+    if (el.tagName === "IMG" && el.closest("figure")) return false;
+    return true;
+  });
+}
 
 async function fetchImageBytes(src: string): Promise<{ data: Uint8Array; width: number; height: number; type: "png" | "jpg" | "gif" | "bmp" } | null> {
   try {
@@ -794,7 +825,7 @@ export async function htmlToDocx(html: string, title = "Document"): Promise<Blob
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
   const body = doc.body;
   const children: (Paragraph | Table)[] = [];
-  const blockEls = [...body.children] as HTMLElement[];
+  const blockEls = collectBlockElements(body);
 
   for (const el of blockEls) {
     const tag = el.tagName.toLowerCase();
@@ -854,10 +885,10 @@ export async function htmlToDocx(html: string, title = "Document"): Promise<Blob
     properties: {
       page: {
         margin: {
-          top: DEFAULT_MARGIN_IN * INCH / 14.4,
-          bottom: DEFAULT_MARGIN_IN * INCH / 14.4,
-          left: DEFAULT_MARGIN_IN * INCH / 14.4,
-          right: DEFAULT_MARGIN_IN * INCH / 14.4,
+          top: DEFAULT_MARGIN_IN * TWIPS_PER_INCH,
+          bottom: DEFAULT_MARGIN_IN * TWIPS_PER_INCH,
+          left: DEFAULT_MARGIN_IN * TWIPS_PER_INCH,
+          right: DEFAULT_MARGIN_IN * TWIPS_PER_INCH,
         },
       },
     },
