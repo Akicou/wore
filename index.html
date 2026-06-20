@@ -16,18 +16,8 @@
       name="description"
       content="WoRe by Nayhein.com — an agentic editor for PDF, DOCX & Markdown with AI built in."
     />
-    <script>
-      // Apply persisted theme before paint to avoid flash.
-      (function () {
-        try {
-          var raw = localStorage.getItem("wore.theme");
-          var mode = raw ? JSON.parse(raw) : { theme: "system" };
-          var sys = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var dark = mode.theme === "dark" || (mode.theme === "system" && sys);
-          document.documentElement.classList.toggle("dark", dark);
-        } catch (e) {}
-      })();
-    </script>
+    <!-- External (not inline) so a strict script-src 'self' CSP can ship. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

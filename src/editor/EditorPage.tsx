@@ -58,7 +58,6 @@ import { undo, redo } from "@/lib/editor";
 import { htmlToPlainText, nodeToPlainText, wordCount, readingTimeMin, charCount } from "@/lib/documents/html";
 import { docxToHtml, docxToText } from "@/lib/documents/docx";
 import { downloadBlob, cn } from "@/lib/utils";
-import { renderAsync as renderDocxPreview } from "docx-preview";
 
 import { EditorContext, type DocumentImage, type SelectionTarget } from "./context";
 import { WoreEditor, useFormats } from "./WoreEditor";
@@ -284,6 +283,9 @@ export function EditorPage() {
   }, [doc?.id, doc?.format]);
 
   /* ----------------------------- docx preview ------------------------------ */
+  // The Word preview renders the *current* document HTML — the same docx-preview
+  // markup (plus its embedded <style> host) captured at import and then edited in
+  // place — so the preview always reflects edits instead of the original bytes.
   useEffect(() => {
     const shouldRenderDocxPreview = doc?.format === "docx" && (view === "preview" || splitView);
     if (!shouldRenderDocxPreview) {
@@ -291,56 +293,17 @@ export function EditorPage() {
       setDocxPreviewError(null);
       return;
     }
-    let cancelled = false;
     const container = docxPreviewRef.current;
     if (!container) return;
-    container.innerHTML = "";
-    setDocxPreviewLoading(true);
+    setDocxPreviewLoading(false);
     setDocxPreviewError(null);
-    (async () => {
-      const bytes = await getSourceBytes(doc.id);
-      if (!bytes) throw new Error("Original DOCX bytes are missing. Re-import this file to enable exact Word preview.");
-      if (cancelled) return;
-      container.innerHTML = "";
-      const styleHost = document.createElement("div");
-      styleHost.className = "wore-docx-style-host";
-      styleHost.setAttribute("aria-hidden", "true");
-      const bodyHost = document.createElement("div");
-      bodyHost.className = "wore-docx-body-host";
-      container.append(styleHost, bodyHost);
-      await renderDocxPreview(bytes.slice(0), bodyHost, styleHost, {
-        className: "wore-docx",
-        inWrapper: true,
-        ignoreWidth: false,
-        ignoreHeight: false,
-        ignoreFonts: false,
-        breakPages: true,
-        experimental: true,
-        renderHeaders: true,
-        renderFooters: true,
-        renderFootnotes: true,
-        renderEndnotes: true,
-        renderComments: true,
-        renderAltChunks: true,
-        renderChanges: true,
-        ignoreLastRenderedPageBreak: false,
-        useBase64URL: true,
-      });
-      if (!cancelled) {
-        const text = nodeToPlainText(bodyHost);
-        setStats({ words: wordCount(text), chars: text.length, mins: Math.max(1, Math.round(wordCount(text) / 200)) });
-      }
-    })()
-      .catch((e) => {
-        if (!cancelled) setDocxPreviewError((e as Error).message);
-      })
-      .finally(() => {
-        if (!cancelled) setDocxPreviewLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [view, doc, splitView]);
+    // In split view the editor is mounted, so prefer its live DOM; otherwise the
+    // synced `content` state is the source of truth.
+    const html = view === "edit" && editorRef.current ? editorRef.current.innerHTML : content;
+    container.innerHTML = html || "<p><br></p>";
+    const text = nodeToPlainText(container);
+    setStats({ words: wordCount(text), chars: text.length, mins: Math.max(1, Math.round(wordCount(text) / 200)) });
+  }, [view, doc, splitView, content]);
 
   /* ----------------------------- context value ----------------------------- */
   const getHTML = useCallback(() => editorRef.current?.innerHTML ?? content, [content]);
@@ -393,12 +356,20 @@ export function EditorPage() {
   }, []);
 
   const getDocumentText = useCallback(() => {
-    if (doc?.format === "docx") {
-      if (sourceTextContext.trim()) return sourceTextContext.trim();
-      const previewText = docxPreviewRef.current ? nodeToPlainText(docxPreviewRef.current) : "";
-      if (previewText) return previewText;
+    // Prefer the live, edited document. htmlToPlainText/nodeToPlainText strip the
+    // embedded docx style host, so the AI never sees raw CSS. Fall back to the
+    // preview node, then the original source text, then synced content.
+    const liveHtml = editorRef.current?.innerHTML;
+    if (liveHtml) {
+      const t = htmlToPlainText(liveHtml);
+      if (t.trim()) return t;
     }
-    return htmlToPlainText(editorRef.current?.innerHTML ?? content);
+    if (doc?.format === "docx" && docxPreviewRef.current) {
+      const previewText = nodeToPlainText(docxPreviewRef.current);
+      if (previewText.trim()) return previewText;
+    }
+    if (doc?.format === "docx" && sourceTextContext.trim()) return sourceTextContext.trim();
+    return htmlToPlainText(content);
   }, [content, doc?.format, sourceTextContext]);
 
   const getDocumentImages = useCallback(async (): Promise<DocumentImage[]> => {
@@ -1055,11 +1026,6 @@ function DocxPreview({
           <p className="font-medium text-foreground">Word preview unavailable</p>
           <p className="mt-1">{error}</p>
         </div>
-      )}
-      {!loading && !error && (
-        <p className="no-print mx-auto mb-3 max-w-[820px] text-center text-[11px] text-muted-foreground">
-          High-fidelity render of the original import. Edits made in Edit mode appear in exports, not here.
-        </p>
       )}
       <div ref={previewRef} className="wore-docx-preview mx-auto" />
     </div>
