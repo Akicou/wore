@@ -78,10 +78,219 @@ async function docxPreviewToHtml(arrayBuffer: ArrayBuffer): Promise<string> {
     useBase64URL: true,
   });
 
+  // JSZip returns DOCX media blobs without a MIME type, so docx-preview can
+  // emit data:application/octet-stream URLs. Our sanitizer intentionally keeps
+  // only data:image/* sources; normalize raster images before sanitization.
+  normalizeDocxPreviewImageSources(body);
+
   if (!body.textContent?.trim() && !body.querySelector("img,svg,canvas,table")) return "";
   const css = styles.innerHTML;
   const content = body.innerHTML;
   return `<div class="wore-docx-import"><div class="wore-docx-style-host" aria-hidden="true">${css}</div>${content}</div>`;
+}
+
+export async function repairDocxImportImages(arrayBuffer: ArrayBuffer, html: string): Promise<string> {
+  if (!html || !/<(?:img|image)\b/i.test(html)) return html;
+
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const imageEls = imageLikeElements(doc.body);
+  const toRepair = imageEls.filter((el) => imageSourceNeedsRepair(getImageLikeSource(el)));
+  if (!toRepair.length) return html;
+
+  let changed = false;
+  const unresolved: Element[] = [];
+  for (const el of toRepair) {
+    const src = getImageLikeSource(el);
+    const normalized = normalizeDataImageUrl(src);
+    if (normalized && normalized !== src) {
+      setImageLikeSource(el, normalized);
+      changed = true;
+    } else {
+      unresolved.push(el);
+    }
+  }
+
+  if (unresolved.length) {
+    const dataUrls = await readDocxImageDataUrls(arrayBuffer.slice(0)).catch(() => []);
+    unresolved.forEach((el, index) => {
+      const dataUrl = dataUrls[index];
+      if (!dataUrl) return;
+      setImageLikeSource(el, dataUrl);
+      changed = true;
+    });
+  }
+
+  return changed ? doc.body.innerHTML : html;
+}
+
+function normalizeDocxPreviewImageSources(root: ParentNode) {
+  for (const el of imageLikeElements(root)) {
+    const src = getImageLikeSource(el);
+    const normalized = normalizeDataImageUrl(src);
+    if (normalized && normalized !== src) setImageLikeSource(el, normalized);
+  }
+}
+
+function imageLikeElements(root: ParentNode): Element[] {
+  return [...root.querySelectorAll("img, image")];
+}
+
+function getImageLikeSource(el: Element): string | null {
+  if (el.localName.toLowerCase() === "img") return el.getAttribute("src");
+  return el.getAttribute("href") ?? el.getAttributeNS("http://www.w3.org/1999/xlink", "href") ?? el.getAttribute("xlink:href");
+}
+
+function setImageLikeSource(el: Element, src: string) {
+  if (el.localName.toLowerCase() === "img") {
+    el.setAttribute("src", src);
+    return;
+  }
+  el.setAttribute("href", src);
+  if (el.hasAttribute("xlink:href")) el.setAttribute("xlink:href", src);
+}
+
+function imageSourceNeedsRepair(src: string | null): boolean {
+  const value = src?.trim() ?? "";
+  if (!value || value.startsWith("blob:")) return true;
+  return value.startsWith("data:") && normalizeDataImageUrl(value) !== value;
+}
+
+function normalizeDataImageUrl(src: string | null): string | null {
+  if (!src?.startsWith("data:")) return src;
+  if (/^data:image\/(?:png|jpe?g|gif|webp|bmp|svg\+xml|avif);/i.test(src)) return src;
+
+  const match = /^data:([^;,]*)(;base64)?,([\s\S]*)$/i.exec(src);
+  if (!match?.[2]) return src;
+  const payload = match[3].replace(/\s/g, "");
+  const mime = imageMimeFromBase64(payload);
+  return mime ? `data:${mime};base64,${payload}` : src;
+}
+
+function imageMimeFromBase64(base64: string): string | null {
+  try {
+    const bytes = base64PrefixBytes(base64, 64);
+    return imageMimeFromBytes(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function base64PrefixBytes(base64: string, byteCount: number): Uint8Array {
+  const chars = Math.ceil(byteCount / 3) * 4;
+  const binary = atob(base64.slice(0, chars));
+  const out = new Uint8Array(Math.min(byteCount, binary.length));
+  for (let i = 0; i < out.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+function imageMimeFromBytes(bytes: Uint8Array, fileName = ""): string | null {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 6) {
+    const sig6 = asciiPrefix(bytes, 6);
+    if (sig6 === "GIF87a" || sig6 === "GIF89a") return "image/gif";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0x42 && bytes[1] === 0x4d) return "image/bmp";
+  if (bytes.length >= 12 && asciiPrefix(bytes, 4) === "RIFF" && asciiSlice(bytes, 8, 12) === "WEBP") return "image/webp";
+  if (bytes.length >= 12 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) return "image/avif";
+  const text = asciiPrefix(bytes, Math.min(bytes.length, 64)).trimStart().toLowerCase();
+  if (text.startsWith("<svg") || text.startsWith("<?xml")) return "image/svg+xml";
+
+  const ext = fileName.toLowerCase().split(".").pop();
+  switch (ext) {
+    case "png": return "image/png";
+    case "jpg":
+    case "jpeg": return "image/jpeg";
+    case "gif": return "image/gif";
+    case "bmp": return "image/bmp";
+    case "webp": return "image/webp";
+    case "svg": return "image/svg+xml";
+    case "avif": return "image/avif";
+    default: return null;
+  }
+}
+
+function asciiPrefix(bytes: Uint8Array, n: number): string {
+  return asciiSlice(bytes, 0, Math.min(n, bytes.length));
+}
+
+function asciiSlice(bytes: Uint8Array, start: number, end: number): string {
+  let text = "";
+  for (let i = start; i < end && i < bytes.length; i++) text += String.fromCharCode(bytes[i]);
+  return text;
+}
+
+async function readDocxImageDataUrls(arrayBuffer: ArrayBuffer): Promise<string[]> {
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const documentXml = await zip.file("word/document.xml")?.async("text");
+  const relsXml = await zip.file("word/_rels/document.xml.rels")?.async("text");
+  if (!documentXml || !relsXml) return [];
+
+  const parser = new DOMParser();
+  const documentDoc = parser.parseFromString(documentXml, "application/xml");
+  const relsDoc = parser.parseFromString(relsXml, "application/xml");
+  const rels = readImageRelationshipTargets(relsDoc, "word");
+  const ids = readImageRelationshipIds(documentDoc);
+
+  const out: string[] = [];
+  for (const id of ids) {
+    const path = rels.get(id);
+    if (!path) continue;
+    const bytes = await zip.file(path)?.async("uint8array");
+    if (!bytes) continue;
+    const mime = imageMimeFromBytes(bytes, path);
+    if (!mime) continue;
+    out.push(`data:${mime};base64,${bytesToBase64(bytes)}`);
+  }
+  return out;
+}
+
+function readImageRelationshipTargets(relsDoc: Document, baseFolder: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const rel of elementsByLocalName(relsDoc, "Relationship")) {
+    const id = attr(rel, "Id");
+    const target = attr(rel, "Target");
+    const type = attr(rel, "Type") ?? "";
+    const targetMode = attr(rel, "TargetMode") ?? "";
+    if (!id || !target || targetMode.toLowerCase() === "external" || !/\/image$/i.test(type)) continue;
+    map.set(id, resolveZipPath(baseFolder, target));
+  }
+  return map;
+}
+
+function readImageRelationshipIds(documentDoc: Document): string[] {
+  const ids: string[] = [];
+  for (const el of [...documentDoc.getElementsByTagName("*")]) {
+    if (el.localName === "blip") {
+      const id = attr(el, "embed") ?? attr(el, "link");
+      if (id) ids.push(id);
+    } else if (el.localName === "imagedata") {
+      const id = attr(el, "id");
+      if (id) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function resolveZipPath(baseFolder: string, target: string): string {
+  const raw = target.startsWith("/") ? target.slice(1) : `${baseFolder}/${target}`;
+  const parts: string[] = [];
+  for (const part of raw.replace(/\\/g, "/").split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/");
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
 }
 
 interface ParagraphLayout {

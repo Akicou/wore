@@ -56,7 +56,7 @@ import type { StoredDoc } from "@/lib/documents/manager";
 import { renderPdfPages, type RenderedPage } from "@/lib/documents/pdf";
 import { undo, redo } from "@/lib/editor";
 import { htmlToPlainText, nodeToPlainText, wordCount, readingTimeMin, charCount } from "@/lib/documents/html";
-import { docxToHtml, docxToText } from "@/lib/documents/docx";
+import { docxToHtml, docxToText, repairDocxImportImages } from "@/lib/documents/docx";
 import { downloadBlob, cn } from "@/lib/utils";
 
 import { EditorContext, type DocumentImage, type SelectionTarget } from "./context";
@@ -122,15 +122,23 @@ export function EditorPage() {
         return;
       }
       let loaded = d;
-      let docxHasSource = false;
+      const sourceBytes = d.format === "docx" || d.format === "pdf" ? await getSourceBytes(d.id) : undefined;
+      const hasSourceBytes = !!sourceBytes;
       if (d.format === "docx") {
-        const bytes = await getSourceBytes(d.id);
-        docxHasSource = !!bytes;
-        if (bytes && !d.contentHtml.includes("wore-docx-import") && !cancelled) {
-          const visualHtml = await docxToHtml(bytes.slice(0)).catch(() => "");
-          if (visualHtml) {
-            loaded = { ...d, contentHtml: visualHtml, updatedAt: Date.now() };
-            await saveDoc(loaded);
+        const bytes = sourceBytes;
+        if (bytes && !cancelled) {
+          if (!d.contentHtml.includes("wore-docx-import")) {
+            const visualHtml = await docxToHtml(bytes.slice(0)).catch(() => "");
+            if (visualHtml) {
+              loaded = { ...d, contentHtml: visualHtml, updatedAt: Date.now() };
+              await saveDoc(loaded);
+            }
+          } else {
+            const repairedHtml = await repairDocxImportImages(bytes.slice(0), d.contentHtml).catch(() => d.contentHtml);
+            if (repairedHtml !== d.contentHtml) {
+              loaded = { ...d, contentHtml: repairedHtml, updatedAt: Date.now() };
+              await saveDoc(loaded);
+            }
           }
         }
       }
@@ -139,9 +147,9 @@ export function EditorPage() {
       setContent(loaded.contentHtml);
       setTitle(loaded.title);
       setSourceTextContext("");
-      // Word preview needs the original bytes; a freshly created DOCX has none,
-      // so default it to edit mode instead of an empty "preview unavailable".
-      setView(loaded.format === "docx" && docxHasSource ? "preview" : "edit");
+      // Visual DOCX/PDF preview needs original bytes. Freshly created documents
+      // have none, so they still open in editable text mode.
+      setView((loaded.format === "docx" || loaded.format === "pdf") && hasSourceBytes ? "preview" : "edit");
       addTab(d.id);
       touchRecent(d.id);
       setLoading(false);
