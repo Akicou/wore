@@ -6,11 +6,9 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
-  ChevronDown,
   CloudOff,
   Columns2,
   Copy,
-  Download,
   FileDown,
   FilePlus2,
   FileText,
@@ -666,164 +664,172 @@ export function EditorPage() {
   return (
     <EditorContext.Provider value={ctxValue}>
       <div className="flex h-screen flex-col bg-background text-foreground">
-        {/* top bar */}
-        <header className="no-print flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card/80 px-3 backdrop-blur">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")} title="Back">
-            <ArrowLeft />
-          </Button>
-          <Brand size={26} withText={false} />
+        {/* menu bar */}
+        <header className="no-print relative flex h-9 select-none items-center border-b border-border bg-background px-2">
+          {/* left: brand + menus */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => navigate("/")}
+              className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title="Home"
+            >
+              <Brand size={18} withText={false} />
+            </button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 px-2">
-                File <ChevronDown className="size-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel>File</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setNewOpen(true)}>
-                <FilePlus2 className="text-accent-strong" /> New document…
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => fileInput.current?.click()}>
-                <FolderOpen /> Open file…
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => persistNow().then(() => toast.success("Saved"))}>
-                <Save className="text-success" /> Save
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Export as</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => exportAs("pdf-print")}>
-                <FileText className="text-destructive" /> PDF <span className="ml-auto text-[10px] text-muted-foreground">print</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("docx")}>
-                <FileType2 className="text-accent-strong" /> Word (.docx)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("md")}>
-                <FileDown /> Markdown (.md)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("html")}>HTML (.html)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("txt")}>Plain text (.txt)</DropdownMenuItem>
-              {doc.format === "pdf" && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={convertPdfToDocx} className="text-accent-strong">
-                    <Wand2 /> Convert PDF → DOCX
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            {/* File */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-7 rounded-md px-2.5 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-muted/60 data-[state=open]:bg-muted/60">
+                  File
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => setNewOpen(true)}>
+                  <FilePlus2 className="size-3.5 text-accent-strong" /> New…
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => fileInput.current?.click()}>
+                  <FolderOpen className="size-3.5" /> Open…
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => persistNow().then(() => toast.success("Saved"))}>
+                  <Save className="size-3.5 text-success" /> Save <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+S</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Export</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => exportAs("pdf-print")}>
+                  <FileText className="size-3.5 text-destructive" /> PDF <span className="ml-auto text-[10px] text-muted-foreground">print</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportAs("docx")}>
+                  <FileType2 className="size-3.5 text-accent-strong" /> Word (.docx)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportAs("md")}>
+                  <FileDown className="size-3.5" /> Markdown (.md)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportAs("html")}>
+                  <FileText className="size-3.5" /> HTML
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportAs("txt")}>
+                  <FileText className="size-3.5" /> Plain text
+                </DropdownMenuItem>
+                {doc.format === "pdf" && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={convertPdfToDocx} className="text-accent-strong">
+                      <Wand2 className="size-3.5" /> Convert to Word
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <FormatChip format={headerFormat} />
+            {/* Edit */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-7 rounded-md px-2.5 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-muted/60 data-[state=open]:bg-muted/60">
+                  Edit
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem disabled={view !== "edit"} onClick={() => runEditorHistory(undo)}>
+                  <Undo2 className="size-3.5" /> Undo <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+Z</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={view !== "edit"} onClick={() => runEditorHistory(redo)}>
+                  <Redo2 className="size-3.5" /> Redo <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+Shift+Z</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    const el = editorRef.current || docxPreviewRef.current;
+                    if (!el) return;
+                    const range = document.createRange();
+                    range.selectNodeContents(el);
+                    const sel = window.getSelection();
+                    sel?.removeAllRanges();
+                    sel?.addRange(range);
+                  }}
+                >
+                  <Copy className="size-3.5" /> Select All <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+A</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <input
-            value={headerTitle}
-            onChange={(e) => setTitle(e.target.value)}
-            className="ml-1 h-8 min-w-0 flex-1 rounded-md bg-transparent px-2 font-display text-base font-semibold outline-none hover:bg-muted focus:bg-muted"
-            placeholder="Untitled"
-          />
-
-          <div className="hidden items-center gap-0.5 sm:flex">
-            <Button variant="ghost" size="icon-sm" onClick={() => runEditorHistory(undo)} disabled={view !== "edit"} title="Undo">
-              <Undo2 className="size-3.5" />
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={() => runEditorHistory(redo)} disabled={view !== "edit"} title="Redo">
-              <Redo2 className="size-3.5" />
-            </Button>
+            {/* View */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-7 rounded-md px-2.5 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-muted/60 data-[state=open]:bg-muted/60">
+                  View
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {(headerFormat === "pdf" || headerFormat === "docx") && (
+                  <>
+                    <DropdownMenuItem disabled={headerFormat === "pdf"} onClick={() => setView("edit")}>
+                      <Pencil className="size-3.5" /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setView("preview")}>
+                      <Eye className="size-3.5" /> Preview
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))}>
+                  <Maximize2 className="size-3.5" /> Zoom In
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setZoom((z) => Math.max(0.6, +(z - 0.1).toFixed(2)))}>
+                  <Minimize2 className="size-3.5" /> Zoom Out
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setZoom(1)}>
+                  <Eye className="size-3.5" /> Reset Zoom
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setSplitView(!splitView)}>
+                  <Columns2 className="size-3.5" /> Split View <span className="ml-auto text-[10px] text-muted-foreground">{keybindings.splitView}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setReferenceOpen((o) => !o)}>
+                  <BookOpen className="size-3.5" /> Reference Panel
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setPanelOpen((o) => !o)}>
+                  <Sparkles className="size-3.5" /> AI Panel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
-          {/* save status */}
-          <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
-            {saving ? (
-              <>
-                <Loader2 className="size-3 animate-spin" /> Saving…
-              </>
-            ) : savedAt ? (
-              <>
-                <Check className="size-3 text-success" /> Saved
-              </>
-            ) : (
-              <>
-                <CloudOff className="size-3" /> Not saved
-              </>
-            )}
-          </span>
-
-          {(headerFormat === "pdf" || headerFormat === "docx") && (
-            <div className="flex items-center rounded-md border border-border p-0.5">
-              <ViewToggle
-                active={view === "edit"}
-                onClick={() => {
-                  if (headerFormat === "pdf") {
-                    setView("preview");
-                    showPdfEditNotice();
-                    return;
-                  }
-                  setView("edit");
-                }}
-                icon={Pencil}
-                label="Edit"
+          {/* center: title */}
+          <div className="pointer-events-none absolute inset-x-0 flex justify-center px-32">
+            <div className="pointer-events-auto flex min-w-0 max-w-md items-center gap-1.5">
+              <FormatChip format={headerFormat} />
+              <input
+                value={headerTitle}
+                onChange={(e) => setTitle(e.target.value)}
+                className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-2 text-sm font-semibold outline-none transition-colors hover:bg-muted/50 focus:bg-muted/50"
+                placeholder="Untitled"
               />
-              <ViewToggle active={view === "preview"} onClick={() => setView("preview")} icon={Eye} label={headerFormat === "docx" ? "Word" : "PDF"} />
             </div>
-          )}
+          </div>
 
-          {/* export */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download /> Export <ChevronDown className="size-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Download as</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => exportAs("pdf-print")}>
-                <FileText className="text-destructive" /> PDF <span className="ml-auto text-[10px] text-muted-foreground">print</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("docx")}>
-                <FileType2 className="text-accent-strong" /> Word (.docx)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("md")}>
-                <FileDown /> Markdown (.md)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("html")}>HTML (.html)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportAs("txt")}>Plain text (.txt)</DropdownMenuItem>
-              {doc.format === "pdf" && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={convertPdfToDocx} className="text-accent-strong">
-                    <Wand2 /> Convert PDF → DOCX
-                  </DropdownMenuItem>
-                </>
+          {/* right: status + controls */}
+          <div className="ml-auto flex items-center gap-1">
+            <span
+              title={saving ? "Saving…" : savedAt ? "Saved" : "Not saved"}
+              className="grid size-5 place-items-center"
+            >
+              {saving ? (
+                <Loader2 className="size-3 animate-spin text-accent" />
+              ) : savedAt ? (
+                <Check className="size-3 text-success" />
+              ) : (
+                <CloudOff className="size-3 text-muted-foreground" />
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </span>
 
-          <Button
-            variant={referenceOpen ? "subtle" : "ghost"}
-            size="icon"
-            onClick={() => setReferenceOpen((o) => !o)}
-            title="Reference panel (dock a document side-by-side)"
-          >
-            <BookOpen />
-          </Button>
+            <AIPicker onOpenSettings={() => setSettingsOpen(true)} />
 
-          <Button
-            variant={splitView ? "subtle" : "ghost"}
-            size="icon"
-            onClick={() => setSplitView(!splitView)}
-            title={`Split view (${keybindings.splitView})`}
-          >
-            <Columns2 />
-          </Button>
-
-          <AIPicker onOpenSettings={() => setSettingsOpen(true)} />
-
-          <Button variant="ghost" size="icon" onClick={() => setSettingsOpen(true)} title="Settings">
-            <Settings2 />
-          </Button>
-          <ThemeToggle />
+            <Button variant="ghost" size="icon-sm" onClick={() => setSettingsOpen(true)} title="Settings">
+              <Settings2 className="size-4" />
+            </Button>
+            <ThemeToggle />
+          </div>
         </header>
 
         <DocumentTabs
