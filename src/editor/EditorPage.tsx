@@ -89,6 +89,7 @@ import { SelectionChat } from "./SelectionChat";
 import { AIPanel } from "./AIPanel";
 import { ImageGenDialog } from "./ImageGenDialog";
 import { ReferencePanel } from "./ReferencePanel";
+import { FindBar } from "./FindBar";
 
 const ACCEPT = ".md,.markdown,.txt,.html,.htm,.docx,.pdf";
 const PDF_EDIT_NOTICE_SNOOZE_KEY = "wore.pdfEditNotice.snoozeUntil";
@@ -184,6 +185,7 @@ export function EditorPage() {
 
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [view, setView] = useState<"edit" | "preview">("edit");
   const [pdfRenderScale, setPdfRenderScale] = useState(1.5);
 
@@ -883,8 +885,12 @@ export function EditorPage() {
             </div>
 
             <button
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-              title="Lens"
+              className={cn(
+                "grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground",
+                searchOpen && "bg-muted text-foreground"
+              )}
+              onClick={() => setSearchOpen((v) => !v)}
+              title="Find in document"
             >
               <Search className="size-3" />
             </button>
@@ -914,6 +920,21 @@ export function EditorPage() {
             }
           }}
         />
+
+        {/* find bar */}
+        {!showSwitchLoader && view === "edit" && (
+          <FindBar
+            editorRef={editorRef}
+            isOpen={searchOpen}
+            onClose={() => {
+              setSearchOpen(false);
+              editorRef.current?.focus();
+            }}
+            onSync={() => {
+              setContent(editorRef.current?.innerHTML ?? content);
+            }}
+          />
+        )}
 
         {/* toolbar (edit view only) */}
         {!showSwitchLoader && view === "edit" && <Toolbar onGenerateImage={() => setImageOpen(true)} />}
