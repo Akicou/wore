@@ -166,6 +166,22 @@ export function EditorPage() {
   const [pdfNoticeDontShow, setPdfNoticeDontShow] = useState(false);
   const [pdfNoticeSnooze, setPdfNoticeSnooze] = useState<PdfNoticeSnooze>("24h");
   const [zoom, setZoom] = useState(1);
+
+  // Ctrl + scroll wheel zoom
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const delta = e.deltaY;
+      setZoom((z) => {
+        const next = delta > 0 ? z - 0.1 : z + 0.1;
+        return Math.max(0.5, Math.min(3, +next.toFixed(2)));
+      });
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, []);
+
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [view, setView] = useState<"edit" | "preview">("edit");
@@ -815,7 +831,7 @@ export function EditorPage() {
           <div className="ml-auto flex items-center gap-0.5">
             <span
               title={saving ? "Saving…" : savedAt ? "Saved" : "Not saved"}
-              className="grid size-5 place-items-center"
+              className="grid h-7 w-7 place-items-center"
             >
               {saving ? (
                 <Loader2 className="size-3 animate-spin text-accent" />
@@ -827,9 +843,9 @@ export function EditorPage() {
             </span>
 
             {/* zoom */}
-            <div className="ml-1 flex items-center rounded-md border border-border bg-muted/30">
+            <div className="ml-1 flex h-7 items-center overflow-hidden rounded-md border border-border bg-muted/30">
               <button
-                className="grid size-6 place-items-center rounded-l-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-40"
+                className="grid h-7 w-5 place-items-center rounded-l-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-40"
                 onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))}
                 disabled={zoom <= 0.5}
                 title="Zoom out"
@@ -837,14 +853,14 @@ export function EditorPage() {
                 <ZoomOut className="size-3" />
               </button>
               <button
-                className="h-6 min-w-[2.5rem] px-1 text-center text-[11px] font-medium tabular-nums text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                className="flex h-7 items-center px-1 text-center text-[11px] font-medium tabular-nums text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                 onClick={() => setZoom(1)}
                 title="Reset zoom"
               >
                 {Math.round(zoom * 100)}%
               </button>
               <button
-                className="grid size-6 place-items-center rounded-r-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-40"
+                className="grid h-7 w-5 place-items-center rounded-r-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-40"
                 onClick={() => setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)))}
                 disabled={zoom >= 3}
                 title="Zoom in"
@@ -854,7 +870,7 @@ export function EditorPage() {
             </div>
 
             <button
-              className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
               title="Lens"
             >
               <Search className="size-3" />
@@ -862,9 +878,13 @@ export function EditorPage() {
 
             <AIPicker onOpenSettings={() => setSettingsOpen(true)} />
 
-            <Button variant="ghost" size="icon-sm" onClick={() => setSettingsOpen(true)} title="Settings">
+            <button
+              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() => setSettingsOpen(true)}
+              title="Settings"
+            >
               <Settings2 className="size-4" />
-            </Button>
+            </button>
             <ThemeToggle />
           </div>
         </header>
@@ -981,17 +1001,6 @@ export function EditorPage() {
             </div>
             )}
 
-            {/* floating "convert" hint on pdf preview */}
-            {!switching && view === "preview" && doc.format === "pdf" && (
-              <Button
-                variant="accent"
-                className="no-print fixed bottom-6 right-6 shadow-xl"
-                onClick={convertPdfToDocx}
-              >
-                <Wand2 /> Convert to Word
-              </Button>
-            )}
-
             {/* selection chat overlay */}
             <SelectionChat />
             {previewMenu && (
@@ -1028,6 +1037,17 @@ export function EditorPage() {
           <span>{chars} chars</span>
           <span>·</span>
           <span>{mins} min read</span>
+          {doc.format === "pdf" && (
+            <>
+              <span>·</span>
+              <button
+                onClick={convertPdfToDocx}
+                className="flex items-center gap-1 text-accent-strong transition-colors hover:text-accent"
+              >
+                <Wand2 className="size-3" /> Convert to Word
+              </button>
+            </>
+          )}
 
           <div className="ml-auto flex items-center gap-2">
             {profileReady ? (
