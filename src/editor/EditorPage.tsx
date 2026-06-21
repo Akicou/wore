@@ -24,11 +24,14 @@ import {
   Pencil,
   Redo2,
   Save,
+  Search,
   Settings2,
   Sparkles,
   Undo2,
   Wand2,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Brand } from "@/components/Brand";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -808,8 +811,8 @@ export function EditorPage() {
             </div>
           </div>
 
-          {/* right: status + controls */}
-          <div className="ml-auto flex items-center gap-1">
+          {/* right: status + zoom + controls */}
+          <div className="ml-auto flex items-center gap-0.5">
             <span
               title={saving ? "Saving…" : savedAt ? "Saved" : "Not saved"}
               className="grid size-5 place-items-center"
@@ -822,6 +825,40 @@ export function EditorPage() {
                 <CloudOff className="size-3 text-muted-foreground" />
               )}
             </span>
+
+            {/* zoom */}
+            <div className="ml-1 flex items-center rounded-md border border-border bg-muted/30">
+              <button
+                className="grid size-6 place-items-center rounded-l-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-40"
+                onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))}
+                disabled={zoom <= 0.5}
+                title="Zoom out"
+              >
+                <ZoomOut className="size-3" />
+              </button>
+              <button
+                className="h-6 min-w-[2.5rem] px-1 text-center text-[11px] font-medium tabular-nums text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                onClick={() => setZoom(1)}
+                title="Reset zoom"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                className="grid size-6 place-items-center rounded-r-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-40"
+                onClick={() => setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)))}
+                disabled={zoom >= 3}
+                title="Zoom in"
+              >
+                <ZoomIn className="size-3" />
+              </button>
+            </div>
+
+            <button
+              className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              title="Lens"
+            >
+              <Search className="size-3" />
+            </button>
 
             <AIPicker onOpenSettings={() => setSettingsOpen(true)} />
 
