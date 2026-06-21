@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  BookOpen,
   Check,
   ChevronDown,
   CloudOff,
@@ -11,9 +12,11 @@ import {
   Copy,
   Download,
   FileDown,
+  FilePlus2,
   FileText,
   FileType2,
   Eye,
+  FolderOpen,
   Loader2,
   Maximize2,
   MessageSquarePlus,
@@ -22,6 +25,7 @@ import {
   PanelRightOpen,
   Pencil,
   Redo2,
+  Save,
   Settings2,
   Sparkles,
   Undo2,
@@ -33,7 +37,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { AIPicker } from "@/components/AIPicker";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/form";
+import { Input, Label } from "@/components/ui/form";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -43,6 +47,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useStore, countWords } from "@/lib/store";
 import type { RecentDoc } from "@/lib/store";
 import {
@@ -51,12 +70,15 @@ import {
   getSourceBytes,
   exportDoc,
   exportPdfToDocx,
+  importFile,
+  newDoc,
 } from "@/lib/documents/manager";
 import type { StoredDoc } from "@/lib/documents/manager";
 import { renderPdfPages, type RenderedPage } from "@/lib/documents/pdf";
 import { undo, redo } from "@/lib/editor";
 import { htmlToPlainText, nodeToPlainText, wordCount, readingTimeMin, charCount } from "@/lib/documents/html";
 import { docxToHtml, docxToText, repairDocxImportImages } from "@/lib/documents/docx";
+import { markdownToHtml, starterMarkdown } from "@/lib/documents/markdown";
 import { downloadBlob, cn } from "@/lib/utils";
 
 import { EditorContext, type DocumentImage, type SelectionTarget } from "./context";
@@ -65,6 +87,36 @@ import { Toolbar } from "./Toolbar";
 import { SelectionChat } from "./SelectionChat";
 import { AIPanel } from "./AIPanel";
 import { ImageGenDialog } from "./ImageGenDialog";
+import { ReferencePanel } from "./ReferencePanel";
+
+const ACCEPT = ".md,.markdown,.txt,.html,.htm,.docx,.pdf";
+const PDF_EDIT_NOTICE_SNOOZE_KEY = "wore.pdfEditNotice.snoozeUntil";
+const PDF_NOTICE_SNOOZE_MS = {
+  "1h": 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+} as const;
+type PdfNoticeSnooze = keyof typeof PDF_NOTICE_SNOOZE_MS;
+const PDF_NOTICE_SNOOZE_LABELS: Record<PdfNoticeSnooze, string> = {
+  "1h": "1 hour",
+  "24h": "24 hours",
+  "7d": "7 days",
+};
+
+function isPdfEditNoticeSnoozed() {
+  try {
+    const until = Number(localStorage.getItem(PDF_EDIT_NOTICE_SNOOZE_KEY) ?? 0);
+    return Number.isFinite(until) && until > Date.now();
+  } catch {
+    return false;
+  }
+}
+
+function snoozePdfEditNotice(snooze: PdfNoticeSnooze) {
+  try {
+    localStorage.setItem(PDF_EDIT_NOTICE_SNOOZE_KEY, String(Date.now() + PDF_NOTICE_SNOOZE_MS[snooze]));
+  } catch {}
+}
 
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -87,12 +139,20 @@ export function EditorPage() {
 
   const [doc, setDoc] = useState<StoredDoc | null>(null);
   const [loading, setLoading] = useState(true);
+  // `loading` is only the very first load (full-screen splash). Tab switches
+  // keep the shell mounted and transition the content area inline, so switching
+  // documents never feels like the whole UI is reloading.
+  const [switching, setSwitching] = useState(false);
+  const [showSwitchLoader, setShowSwitchLoader] = useState(false);
   const [content, setContent] = useState("");
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const isFirstLoadRef = useRef(true);
+  const switchLoaderTimer = useRef<number | null>(null);
   const formats = useFormats(editorRef);
   const [selection, setSelection] = useState<SelectionTarget | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -100,7 +160,13 @@ export function EditorPage() {
   const [previewMenu, setPreviewMenu] = useState<{ x: number; y: number; text: string; range: Range } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [pdfNoticeOpen, setPdfNoticeOpen] = useState(false);
+  const [pdfNoticeDontShow, setPdfNoticeDontShow] = useState(false);
+  const [pdfNoticeSnooze, setPdfNoticeSnooze] = useState<PdfNoticeSnooze>("24h");
   const [zoom, setZoom] = useState(1);
+  const [referenceId, setReferenceId] = useState<string | null>(null);
+  const [referenceOpen, setReferenceOpen] = useState(false);
   const [view, setView] = useState<"edit" | "preview">("edit");
   const [pdfPages, setPdfPages] = useState<RenderedPage[] | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -110,15 +176,90 @@ export function EditorPage() {
   const [stats, setStats] = useState({ words: 0, chars: 0, mins: 1 });
   const docxPreviewRef = useRef<HTMLDivElement>(null);
 
+  const showPdfEditNotice = useCallback(() => {
+    if (isPdfEditNoticeSnoozed()) return;
+    setPdfNoticeOpen(true);
+  }, []);
+
+  const acknowledgePdfEditNotice = useCallback(() => {
+    if (pdfNoticeDontShow) snoozePdfEditNotice(pdfNoticeSnooze);
+    setPdfNoticeOpen(false);
+  }, [pdfNoticeDontShow, pdfNoticeSnooze]);
+
+  const handleFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const list = Array.from(files);
+      if (!list.length) return;
+      try {
+        let lastId: string | null = null;
+        for (const file of list) {
+          const { doc: importedDoc, recent: importedRecent } = await importFile(file);
+          await saveDoc(importedDoc);
+          upsertRecent(importedRecent);
+          addTab(importedDoc.id);
+          lastId = importedDoc.id;
+        }
+        if (lastId) navigate(`/editor/${lastId}`);
+      } catch (e) {
+        toast.error("Could not open file", { description: (e as Error).message });
+      }
+    },
+    [addTab, navigate, upsertRecent]
+  );
+
+  const createNewDocument = useCallback(
+    async (newTitle: string, format: "md" | "docx") => {
+      const safeTitle = newTitle || "Untitled";
+      const html = format === "md" ? markdownToHtml(starterMarkdown(safeTitle)) : `<h1>${safeTitle}</h1><p><br></p>`;
+      const created = newDoc(format, safeTitle, html);
+      await saveDoc(created);
+      upsertRecent({
+        id: created.id,
+        title: created.title,
+        format: created.format,
+        createdAt: created.createdAt,
+        updatedAt: created.updatedAt,
+        openedAt: Date.now(),
+        size: new Blob([html]).size,
+      });
+      addTab(created.id);
+      setNewOpen(false);
+      navigate(`/editor/${created.id}`);
+    },
+    [addTab, navigate, upsertRecent]
+  );
+
   /* ----------------------------- load document ---------------------------- */
+  // The full-screen "Opening document…" splash only shows on the very first
+  // load. Switching between open tabs keeps the editor shell mounted (header,
+  // tabs, toolbar, panels) and transitions only the content area inline. A
+  // loader is revealed for the content area only if a switch takes longer than
+  // ~160ms, so fast IDB reads don't flicker a spinner for a frame or two.
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const firstLoad = isFirstLoadRef.current;
+    if (firstLoad) {
+      setLoading(true);
+    } else {
+      setSwitching(true);
+      setShowSwitchLoader(false);
+      switchLoaderTimer.current = window.setTimeout(() => setShowSwitchLoader(true), 160);
+    }
+    const finish = () => {
+      if (switchLoaderTimer.current) {
+        clearTimeout(switchLoaderTimer.current);
+        switchLoaderTimer.current = null;
+      }
+      isFirstLoadRef.current = false;
+      setLoading(false);
+      setSwitching(false);
+      setShowSwitchLoader(false);
+    };
     (async () => {
       const d = id ? await loadDoc(id) : undefined;
       if (cancelled) return;
       if (!d) {
-        setLoading(false);
+        finish();
         return;
       }
       let loaded = d;
@@ -147,17 +288,23 @@ export function EditorPage() {
       setContent(loaded.contentHtml);
       setTitle(loaded.title);
       setSourceTextContext("");
-      // Visual DOCX/PDF preview needs original bytes. Freshly created documents
-      // have none, so they still open in editable text mode.
-      setView((loaded.format === "docx" || loaded.format === "pdf") && hasSourceBytes ? "preview" : "edit");
+      // PDFs are read-only in WoRe: they can only be previewed, never edited.
+      // DOCX visual preview still needs original bytes, so freshly created docs
+      // (which have none) open in editable text mode.
+      setView(loaded.format === "pdf" ? "preview" : loaded.format === "docx" && hasSourceBytes ? "preview" : "edit");
+      if (loaded.format === "pdf") showPdfEditNotice();
       addTab(d.id);
       touchRecent(d.id);
-      setLoading(false);
+      finish();
     })();
     return () => {
       cancelled = true;
+      if (switchLoaderTimer.current) {
+        clearTimeout(switchLoaderTimer.current);
+        switchLoaderTimer.current = null;
+      }
     };
-  }, [id, touchRecent, addTab]);
+  }, [id, touchRecent, addTab, showPdfEditNotice]);
 
   /* ------------------------------- autosave -------------------------------- */
   // Keep latest doc/recent in refs so the debounce effect only re-arms on
@@ -478,7 +625,7 @@ export function EditorPage() {
   };
 
   /* -------------------------------- render --------------------------------- */
-  if (loading) {
+  if (loading || (!doc && switching)) {
     return (
       <div className="grid h-screen place-items-center bg-background">
         <div className="flex items-center gap-3 text-muted-foreground">
@@ -509,6 +656,13 @@ export function EditorPage() {
     .map((tabId) => recent.find((r) => r.id === tabId) ?? (tabId === doc.id ? { id: doc.id, title, format: doc.format } : null))
     .filter(Boolean) as Array<{ id: string; title: string; format: StoredDoc["format"] }>;
 
+  // While switching, the target doc's metadata is already in `recent`, so reflect
+  // it in the chrome (format chip, title, view toggle) instantly instead of
+  // flashing the document we're leaving behind.
+  const switchingMeta = switching && id ? recent.find((r) => r.id === id) : undefined;
+  const headerFormat = switchingMeta?.format ?? doc.format;
+  const headerTitle = switchingMeta?.title ?? title;
+
   return (
     <EditorContext.Provider value={ctxValue}>
       <div className="flex h-screen flex-col bg-background text-foreground">
@@ -519,10 +673,52 @@ export function EditorPage() {
           </Button>
           <Brand size={26} withText={false} />
 
-          <FormatChip format={doc.format} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 px-2">
+                File <ChevronDown className="size-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuLabel>File</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setNewOpen(true)}>
+                <FilePlus2 className="text-accent-strong" /> New document…
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => fileInput.current?.click()}>
+                <FolderOpen /> Open file…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => persistNow().then(() => toast.success("Saved"))}>
+                <Save className="text-success" /> Save
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Export as</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => exportAs("pdf-print")}>
+                <FileText className="text-destructive" /> PDF <span className="ml-auto text-[10px] text-muted-foreground">print</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportAs("docx")}>
+                <FileType2 className="text-accent-strong" /> Word (.docx)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportAs("md")}>
+                <FileDown /> Markdown (.md)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportAs("html")}>HTML (.html)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportAs("txt")}>Plain text (.txt)</DropdownMenuItem>
+              {doc.format === "pdf" && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={convertPdfToDocx} className="text-accent-strong">
+                    <Wand2 /> Convert PDF → DOCX
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <FormatChip format={headerFormat} />
 
           <input
-            value={title}
+            value={headerTitle}
             onChange={(e) => setTitle(e.target.value)}
             className="ml-1 h-8 min-w-0 flex-1 rounded-md bg-transparent px-2 font-display text-base font-semibold outline-none hover:bg-muted focus:bg-muted"
             placeholder="Untitled"
@@ -554,10 +750,22 @@ export function EditorPage() {
             )}
           </span>
 
-          {(doc.format === "pdf" || doc.format === "docx") && (
+          {(headerFormat === "pdf" || headerFormat === "docx") && (
             <div className="flex items-center rounded-md border border-border p-0.5">
-              <ViewToggle active={view === "edit"} onClick={() => setView("edit")} icon={Pencil} label="Edit" />
-              <ViewToggle active={view === "preview"} onClick={() => setView("preview")} icon={Eye} label={doc.format === "docx" ? "Word" : "PDF"} />
+              <ViewToggle
+                active={view === "edit"}
+                onClick={() => {
+                  if (headerFormat === "pdf") {
+                    setView("preview");
+                    showPdfEditNotice();
+                    return;
+                  }
+                  setView("edit");
+                }}
+                icon={Pencil}
+                label="Edit"
+              />
+              <ViewToggle active={view === "preview"} onClick={() => setView("preview")} icon={Eye} label={headerFormat === "docx" ? "Word" : "PDF"} />
             </div>
           )}
 
@@ -593,6 +801,15 @@ export function EditorPage() {
           </DropdownMenu>
 
           <Button
+            variant={referenceOpen ? "subtle" : "ghost"}
+            size="icon"
+            onClick={() => setReferenceOpen((o) => !o)}
+            title="Reference panel (dock a document side-by-side)"
+          >
+            <BookOpen />
+          </Button>
+
+          <Button
             variant={splitView ? "subtle" : "ghost"}
             size="icon"
             onClick={() => setSplitView(!splitView)}
@@ -611,7 +828,7 @@ export function EditorPage() {
 
         <DocumentTabs
           tabs={tabDocs}
-          activeId={doc.id}
+          activeId={id ?? doc.id}
           onOpen={(tabId) => navigate(`/editor/${tabId}`)}
           onClose={(tabId) => {
             removeTab(tabId);
@@ -623,11 +840,34 @@ export function EditorPage() {
         />
 
         {/* toolbar (edit view only) */}
-        {view === "edit" && <Toolbar onGenerateImage={() => setImageOpen(true)} />}
+        {!showSwitchLoader && view === "edit" && <Toolbar onGenerateImage={() => setImageOpen(true)} />}
 
         {/* body */}
         <div className="flex min-h-0 flex-1">
+          {referenceOpen && (
+            <aside className="no-print hidden w-[320px] shrink-0 border-r border-border md:flex md:flex-col">
+              <ReferencePanel
+                referenceId={referenceId}
+                activeDocId={doc.id}
+                onPick={(pickedId) => {
+                  setReferenceId(pickedId);
+                  toast.success("Reference pinned");
+                }}
+                onClear={() => setReferenceId(null)}
+                onClose={() => setReferenceOpen(false)}
+              />
+            </aside>
+          )}
           <main className="print-area relative min-w-0 flex-1 overflow-auto bg-canvas">
+            {showSwitchLoader ? (
+              <div className="grid min-h-full place-items-center">
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  <Loader2 className="size-5 animate-spin text-accent-strong" />
+                  <span className="font-display text-sm">Opening…</span>
+                </div>
+              </div>
+            ) : (
+            <div className={cn("min-h-full", switching && "pointer-events-none")}>
             {view === "edit" ? (
               splitView ? (
                 <div className="grid min-h-full grid-cols-2 divide-x divide-border" style={{ zoom }}>
@@ -695,9 +935,11 @@ export function EditorPage() {
             ) : (
               <PdfPreview loading={pdfLoading} pages={pdfPages} zoom={zoom} />
             )}
+            </div>
+            )}
 
             {/* floating "convert" hint on pdf preview */}
-            {view === "preview" && doc.format === "pdf" && (
+            {!switching && view === "preview" && doc.format === "pdf" && (
               <Button
                 variant="accent"
                 className="no-print fixed bottom-6 right-6 shadow-xl"
@@ -782,9 +1024,151 @@ export function EditorPage() {
         </footer>
       </div>
 
+      <input
+        ref={fileInput}
+        type="file"
+        accept={ACCEPT}
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files) handleFiles(e.target.files);
+          e.currentTarget.value = "";
+        }}
+      />
+      <NewDocumentDialog open={newOpen} onOpenChange={setNewOpen} onCreate={createNewDocument} />
       <ImageGenDialog open={imageOpen} onOpenChange={setImageOpen} />
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <PdfEditNoticeDialog
+        open={pdfNoticeOpen}
+        dontShow={pdfNoticeDontShow}
+        snooze={pdfNoticeSnooze}
+        onDontShowChange={setPdfNoticeDontShow}
+        onSnoozeChange={setPdfNoticeSnooze}
+        onUnderstand={acknowledgePdfEditNotice}
+      />
     </EditorContext.Provider>
+  );
+}
+
+function NewDocumentDialog({
+  open,
+  onOpenChange,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onCreate: (title: string, format: "md" | "docx") => void;
+}) {
+  const [newTitle, setNewTitle] = useState("Untitled");
+  const [format, setFormat] = useState<"md" | "docx">("docx");
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create a new document</DialogTitle>
+          <DialogDescription>Pick a format and give it a name.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Title</Label>
+            <Input
+              autoFocus
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && onCreate(newTitle || "Untitled", format)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Format</Label>
+            <Select value={format} onValueChange={(v) => setFormat(v as "md" | "docx")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="docx">Word (.docx)</SelectItem>
+                <SelectItem value="md">Markdown (.md)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={() => onCreate(newTitle || "Untitled", format)}>
+            <FilePlus2 /> Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PdfEditNoticeDialog({
+  open,
+  dontShow,
+  snooze,
+  onDontShowChange,
+  onSnoozeChange,
+  onUnderstand,
+}: {
+  open: boolean;
+  dontShow: boolean;
+  snooze: PdfNoticeSnooze;
+  onDontShowChange: (v: boolean) => void;
+  onSnoozeChange: (v: PdfNoticeSnooze) => void;
+  onUnderstand: () => void;
+}) {
+  return (
+    <Dialog open={open}>
+      <DialogContent
+        showClose={false}
+        className="max-w-md"
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <div className="mb-1 grid size-11 place-items-center rounded-xl bg-destructive/10 text-destructive">
+            <FileText className="size-5" />
+          </div>
+          <DialogTitle>Editing PDFs is not possible</DialogTitle>
+          <DialogDescription>
+            PDFs are read-only in WoRe. You can preview them, use them as a reference, or convert a PDF to Word if you need an editable copy.
+          </DialogDescription>
+        </DialogHeader>
+
+        <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={dontShow}
+            onChange={(e) => onDontShowChange(e.target.checked)}
+            className="mt-0.5 size-4 rounded border-border"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">Don’t show this notice again</div>
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <span>for</span>
+              <select
+                value={snooze}
+                disabled={!dontShow}
+                onChange={(e) => onSnoozeChange(e.target.value as PdfNoticeSnooze)}
+                className="h-8 rounded-md border border-input bg-card px-2 text-xs text-foreground disabled:opacity-50"
+              >
+                {(Object.keys(PDF_NOTICE_SNOOZE_MS) as PdfNoticeSnooze[]).map((k) => (
+                  <option key={k} value={k}>{PDF_NOTICE_SNOOZE_LABELS[k]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </label>
+
+        <DialogFooter>
+          <Button variant="accent" onClick={onUnderstand} autoFocus>
+            I understand
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

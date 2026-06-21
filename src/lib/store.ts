@@ -173,7 +173,11 @@ export const useStore = create<AppState>()(
         splitView: "Ctrl+\\",
       },
       addTab: (id) =>
-        set((s) => ({ openTabs: [id, ...s.openTabs.filter((x) => x !== id)].slice(0, 12) })),
+        set((s) =>
+          s.openTabs.includes(id)
+            ? s
+            : { openTabs: [id, ...s.openTabs].slice(0, 12) }
+        ),
       removeTab: (id) => set((s) => ({ openTabs: s.openTabs.filter((x) => x !== id) })),
       setSplitView: (v) => set({ splitView: v }),
       setKeybinding: (k, v) => set((s) => ({ keybindings: { ...s.keybindings, [k]: v } })),
