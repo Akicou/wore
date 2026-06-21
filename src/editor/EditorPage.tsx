@@ -185,6 +185,19 @@ export function EditorPage() {
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [view, setView] = useState<"edit" | "preview">("edit");
+  const [pdfRenderScale, setPdfRenderScale] = useState(1.5);
+
+  // Re-render PDFs at native resolution when zoom changes so image quality
+  // doesn't degrade. Debounced so Ctrl+wheel and rapid button clicks don't
+  // thrash the canvas renderer.
+  useEffect(() => {
+    if (doc?.format !== "pdf" || view !== "preview") return;
+    const target = Math.max(zoom, 1.5);
+    if (Math.abs(pdfRenderScale - target) < 0.05) return;
+    const timer = window.setTimeout(() => setPdfRenderScale(target), 300);
+    return () => clearTimeout(timer);
+  }, [zoom, doc?.format, view, pdfRenderScale]);
+
   const [pdfPages, setPdfPages] = useState<RenderedPage[] | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [docxPreviewLoading, setDocxPreviewLoading] = useState(false);
@@ -424,7 +437,7 @@ export function EditorPage() {
         setPdfLoading(false);
         return;
       }
-      const pages = await renderPdfPages(bytes, 1.3);
+      const pages = await renderPdfPages(bytes, pdfRenderScale);
       if (!cancelled) {
         setPdfPages(pages);
         setPdfLoading(false);
@@ -433,7 +446,7 @@ export function EditorPage() {
     return () => {
       cancelled = true;
     };
-  }, [view, doc]);
+  }, [view, doc, pdfRenderScale]);
 
   /* -------------------------- source text context -------------------------- */
   useEffect(() => {
@@ -996,7 +1009,7 @@ export function EditorPage() {
             ) : doc.format === "docx" ? (
               <DocxPreview loading={docxPreviewLoading} error={docxPreviewError} previewRef={docxPreviewRef} zoom={zoom} />
             ) : (
-              <PdfPreview loading={pdfLoading} pages={pdfPages} zoom={zoom} />
+              <PdfPreview loading={pdfLoading} pages={pdfPages} displayZoom={zoom / pdfRenderScale} />
             )}
             </div>
             )}
@@ -1480,14 +1493,14 @@ function DocxPreview({
 function PdfPreview({
   loading,
   pages,
-  zoom,
+  displayZoom,
 }: {
   loading: boolean;
   pages: RenderedPage[] | null;
-  zoom: number;
+  displayZoom: number;
 }) {
   return (
-    <div className="grid min-h-full place-items-start justify-center gap-6 px-4 py-10" style={{ zoom }}>
+    <div className="grid min-h-full place-items-start justify-center gap-6 px-4 py-10" style={{ zoom: displayZoom }}>
       {loading && (
         <div className="mt-20 flex flex-col items-center gap-2 text-muted-foreground">
           <Loader2 className="size-6 animate-spin text-accent-strong" />
