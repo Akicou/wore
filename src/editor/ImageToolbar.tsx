@@ -3,7 +3,7 @@ import { Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/form";
 import { Slider } from "@/components/ui/slider";
-import { cn } from "@/lib/utils";
+import { cn, clamp } from "@/lib/utils";
 
 interface ImageToolbarProps {
   imageEl: HTMLImageElement;
@@ -84,10 +84,35 @@ export function ImageToolbar({ imageEl, onClose, onChange }: ImageToolbarProps) 
     return () => document.removeEventListener("mousedown", onDown);
   }, [imageEl, onClose]);
 
+  // Keep the toolbar glued to the image as the editor scrolls/resizes.
+  const [, repaint] = useState(0);
+  useEffect(() => {
+    const tick = () => repaint((n) => n + 1);
+    window.addEventListener("scroll", tick, true);
+    window.addEventListener("resize", tick);
+    const ro = new ResizeObserver(tick);
+    ro.observe(imageEl);
+    return () => {
+      window.removeEventListener("scroll", tick, true);
+      window.removeEventListener("resize", tick);
+      ro.disconnect();
+    };
+  }, [imageEl]);
+
+  // The toolbar is `position: fixed`, so coordinates are viewport-relative
+  // (never add scrollTop). Clamp into the viewport and flip below the image
+  // when there isn't room above, so it can't end up off-frame.
   const rect = imageEl.getBoundingClientRect();
-  const scroll = document.documentElement;
-  const top = rect.top + (scroll.scrollTop ?? 0) - 6;
-  const left = rect.left + rect.width / 2 + (scroll.scrollLeft ?? 0);
+  const TB_W = 224; // w-56
+  const TB_H = 230; // approx height
+  const GAP = 6;
+  const PAD = 8;
+  const placeAbove = rect.top - GAP - TB_H >= PAD;
+  const left = clamp(rect.left + rect.width / 2, PAD + TB_W / 2, window.innerWidth - PAD - TB_W / 2);
+  const top = placeAbove
+    ? rect.top - GAP
+    : clamp(rect.bottom + GAP, PAD, window.innerHeight - PAD - TB_H);
+  const toolbarTransform = placeAbove ? "translate(-50%, -100%)" : "translate(-50%, 0)";
 
   const deleteImage = () => {
     const parent = imageEl.closest("figure") as HTMLElement | null;
@@ -161,11 +186,8 @@ export function ImageToolbar({ imageEl, onClose, onChange }: ImageToolbarProps) 
 
       <div
         ref={toolbarRef}
-        className={cn(
-          "fixed z-[100] w-56 rounded-xl border border-border bg-popover p-3 shadow-xl",
-          "translate-y-[-100%] translate-x-[-50%]"
-        )}
-        style={{ top: `${top}px`, left: `${left}px` }}
+        className="fixed z-[100] w-56 rounded-xl border border-border bg-popover p-3 shadow-xl"
+        style={{ top: `${top}px`, left: `${left}px`, transform: toolbarTransform }}
       >
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs font-medium">Image</span>

@@ -40,7 +40,7 @@ import { useStore } from "@/lib/store";
 import type { ChatImagePart, ChatMessage } from "@/lib/ai";
 import { insertHTML } from "@/lib/editor";
 import { checkDocumentPath, readDocumentTextFromPath } from "@/lib/documents/manager";
-import { htmlToPlainText } from "@/lib/documents/html";
+import { htmlToPlainText, sanitizeHtml } from "@/lib/documents/html";
 import { idbGet, idbSet } from "@/lib/idb";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +104,10 @@ export function AIPanel({
   const [fileRefs, setFileRefs] = useState<FileRef[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Abort any in-flight stream if the panel is hidden/unmounted, so it doesn't
+  // keep writing to a dead component and consuming tokens in the background.
+  useEffect(() => () => abortRef.current?.abort(), []);
   const skipNextPersistRef = useRef(false);
   const loadedRef = useRef(false);
 
@@ -180,7 +184,12 @@ export function AIPanel({
   }, [chatStorageKey, sessions]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Only auto-scroll when the user is already near the bottom, so scrolling up
+    // to read earlier messages during a stream isn't yanked back down.
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (nearBottom) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
@@ -704,18 +713,7 @@ function cleanModelHtml(raw: string) {
   const body = parsed.body;
   if (body && body.children.length && /<html|<body/i.test(html)) html = body.innerHTML;
 
-  const tpl = document.createElement("template");
-  tpl.innerHTML = html;
-  tpl.content.querySelectorAll("script, iframe, object, embed").forEach((n) => n.remove());
-  tpl.content.querySelectorAll("*").forEach((el) => {
-    [...el.attributes].forEach((attr) => {
-      const name = attr.name.toLowerCase();
-      const value = attr.value;
-      if (name.startsWith("on")) el.removeAttribute(attr.name);
-      if ((name === "href" || name === "src") && /^\s*javascript:/i.test(value)) el.removeAttribute(attr.name);
-    });
-  });
-  return tpl.innerHTML.trim();
+  return sanitizeHtml(html).trim();
 }
 
 function formatHtmlForDiff(html: string) {

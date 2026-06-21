@@ -1,5 +1,6 @@
 import { marked } from "marked";
 import TurndownService from "turndown";
+import { sanitizeHtml } from "./html";
 
 marked.setOptions({ gfm: true, breaks: false });
 
@@ -15,9 +16,9 @@ turndown.addRule("strikethrough", {
   replacement: (content) => `~~${content}~~`,
 });
 
-/** Markdown source -> editor HTML. */
+/** Markdown source -> editor HTML. Sanitized: marked passes raw HTML through. */
 export function markdownToHtml(md: string): string {
-  return marked.parse(md, { async: false }) as string;
+  return sanitizeHtml(marked.parse(md, { async: false }) as string);
 }
 
 /** Editor HTML -> Markdown source. */

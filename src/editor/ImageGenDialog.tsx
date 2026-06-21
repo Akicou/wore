@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Download, Image as ImageIcon, Loader2, RefreshCw, Wand2 } from "lucide-react";
 import {
@@ -48,6 +48,14 @@ export function ImageGenDialog({
   const [model, setModel] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+
+  // Don't carry a previous generation's preview/busy state into the next open.
+  useEffect(() => {
+    if (!open) {
+      setResult(null);
+      setBusy(false);
+    }
+  }, [open]);
 
   const imageModels = profile?.models.filter((m) => m.imageGen) ?? [];
   const chosenModel = model ?? profile?.defaultImageModel ?? imageModels[0]?.id ?? "";

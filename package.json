@@ -1,7 +1,7 @@
 {
   "name": "wore",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "WoRe — an agentic document editor by Nayhein.com for PDF, DOCX & Markdown.",
   "type": "module",
   "author": "Nayhein.com",

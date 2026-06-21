@@ -619,7 +619,40 @@ function collectBlockElements(body: HTMLElement): HTMLElement[] {
   });
 }
 
+/**
+ * Guard against using image export to reach internal/loopback services (SSRF).
+ * Embedded/generated images are data: or blob: (always allowed); remote images
+ * must be public http(s) — private/loopback hosts are rejected.
+ */
+function isSafeImageSrc(src: string): boolean {
+  const v = src.trim();
+  if (v.startsWith("data:image/") || v.startsWith("blob:")) return true;
+  let url: URL;
+  try {
+    url = new URL(v);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  const host = url.hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host.endsWith(".localhost") ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 async function fetchImageBytes(src: string): Promise<{ data: Uint8Array; width: number; height: number; type: "png" | "jpg" | "gif" | "bmp" } | null> {
+  if (!isSafeImageSrc(src)) return null;
   try {
     const res = await fetch(src);
     if (!res.ok) return null;

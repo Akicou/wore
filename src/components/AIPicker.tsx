@@ -247,7 +247,7 @@ function SearchableModelPicker({
   );
 
   return (
-    <div className="px-1 py-1" onKeyDown={(e) => e.stopPropagation()}>
+    <div className="px-1 py-1" onKeyDown={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}>
       <DropdownMenuLabel className="flex items-center gap-2 px-2">
         <Search className="size-3.5" /> Model ({models.length})
       </DropdownMenuLabel>

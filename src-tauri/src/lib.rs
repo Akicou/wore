@@ -78,6 +78,24 @@ struct EnvKeyResult {
     source: String,
 }
 
+/// Document file extensions the app is allowed to read. The native read
+/// commands are callable from the webview, so without this an injected script
+/// could read arbitrary files (SSH keys, `.env`, credentials). Restricting to
+/// document types keeps the open/import features working while removing that.
+static ALLOWED_DOC_EXTS: &[&str] = &[
+    "md", "markdown", "txt", "text", "html", "htm", "docx", "doc", "pdf", "rtf", "odt",
+];
+
+fn document_ext(path: &std::path::Path) -> String {
+    path.extension()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
+}
+
+fn is_allowed_document(path: &std::path::Path) -> bool {
+    ALLOWED_DOC_EXTS.contains(&document_ext(path).as_str())
+}
+
 #[derive(Serialize)]
 struct ReadDocResult {
     ok: bool,
@@ -97,6 +115,16 @@ fn check_document_path(path: String) -> ReadDocResult {
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "document".into());
+    if !is_allowed_document(p) {
+        return ReadDocResult {
+            ok: false,
+            path,
+            name,
+            size: 0,
+            text: None,
+            error: Some("Unsupported file type.".into()),
+        };
+    }
     match std::fs::metadata(&p) {
         Ok(meta) => ReadDocResult {
             ok: true,
@@ -169,6 +197,17 @@ fn read_document_bytes(path: String) -> DocBytesResult {
         .extension()
         .map(|s| s.to_string_lossy().to_string().to_lowercase())
         .unwrap_or_default();
+    if !is_allowed_document(p) {
+        return DocBytesResult {
+            ok: false,
+            path,
+            name,
+            ext,
+            size: 0,
+            bytes_base64: None,
+            error: Some("Unsupported file type.".into()),
+        };
+    }
     match std::fs::metadata(&p) {
         Ok(meta) => {
             if meta.len() > 25 * 1024 * 1024 {
@@ -222,6 +261,16 @@ fn read_document_file(path: String) -> ReadDocResult {
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "document".into());
+    if !is_allowed_document(p) {
+        return ReadDocResult {
+            ok: false,
+            path,
+            name,
+            size: 0,
+            text: None,
+            error: Some("Unsupported file type.".into()),
+        };
+    }
     match std::fs::metadata(&p) {
         Ok(meta) => {
             if meta.len() > 10 * 1024 * 1024 {
@@ -269,6 +318,14 @@ fn get_log_path() -> String {
     log_file_path().to_string_lossy().to_string()
 }
 
+/// Strip CR/LF and other control chars so caller-supplied fields cannot forge
+/// extra log lines (log injection).
+fn sanitize_log_field(s: &str) -> String {
+    s.chars()
+        .map(|c| if c == '\n' || c == '\r' || c.is_control() { ' ' } else { c })
+        .collect()
+}
+
 #[tauri::command]
 fn write_log(level: String, area: String, message: String, details: Option<String>) -> Result<(), String> {
     let path = log_file_path();
@@ -284,6 +341,9 @@ fn write_log(level: String, area: String, message: String, details: Option<Strin
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let level = sanitize_log_field(&level);
+    let area = sanitize_log_field(&area);
+    let message = sanitize_log_field(&message);
     writeln!(file, "[{ts}] [{level}] [{area}] {message}").map_err(|e| e.to_string())?;
     if let Some(details) = details {
         for line in details.lines() {

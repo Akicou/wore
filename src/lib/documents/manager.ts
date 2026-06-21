@@ -5,7 +5,7 @@ import { markdownToHtml, htmlToMarkdown } from "./markdown";
 import { docxToHtml, docxToText, htmlToDocx } from "./docx";
 import { extractPdfText } from "./pdf";
 import { pdfToDocx } from "./convert";
-import { sanitizeHtml, wrapStandaloneHtml, escapeHtml, htmlToPlainText } from "./html";
+import { sanitizeHtml, sanitizeDocxImportHtml, wrapStandaloneHtml, escapeHtml, htmlToPlainText } from "./html";
 
 export interface StoredDoc {
   id: string;
@@ -97,7 +97,7 @@ export async function readDocumentTextFromPath(path: string): Promise<{ title: s
     html = sanitizeHtml(decoder.decode(buf));
   } else if (ext === "docx") {
     const text = await docxToText(buf.slice(0));
-    html = text ? `<p>${escapeHtml(text).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>` : await docxToHtml(buf.slice(0));
+    html = text ? `<p>${escapeHtml(text).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>` : sanitizeDocxImportHtml(await docxToHtml(buf.slice(0)));
   } else if (ext === "pdf") {
     const { pages } = await extractPdfText(buf.slice(0));
     html = pages
@@ -151,7 +151,7 @@ export async function importFile(
     format = "docx";
     const buf = await file.arrayBuffer();
     const sourceBytes = buf.slice(0);
-    contentHtml = await docxToHtml(buf.slice(0));
+    contentHtml = sanitizeDocxImportHtml(await docxToHtml(buf.slice(0)));
     hasSource = true;
     const doc = newDoc(format, title, contentHtml);
     await saveDoc(doc);

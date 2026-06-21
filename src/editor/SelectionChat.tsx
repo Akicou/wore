@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -41,6 +41,9 @@ export function SelectionChat() {
   const [showAll, setShowAll] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelH, setPanelH] = useState(320);
+  const [, repaint] = useState(0);
 
   useEffect(() => {
     if (target) {
@@ -52,13 +55,45 @@ export function SelectionChat() {
     }
   }, [target]);
 
+  // Follow the document as it scrolls/resizes so the popup stays glued to the
+  // selection instead of drifting off-frame.
+  useEffect(() => {
+    const tick = () => repaint((n) => n + 1);
+    window.addEventListener("scroll", tick, true);
+    window.addEventListener("resize", tick);
+    return () => {
+      window.removeEventListener("scroll", tick, true);
+      window.removeEventListener("resize", tick);
+    };
+  }, []);
+
+  // Measure the real popup height so placement can never clip it off-screen,
+  // even with long output or the reasoning/presets expanded.
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const update = () => setPanelH(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [target]);
+
   // reposition safely if no target
   if (!target) return null;
 
   const profile = ctx.profile;
   const docContext = ctx.getDocumentText();
 
-  const pos = computePos(target.rect);
+  // Prefer the live range rect (follows scroll); fall back to the captured one.
+  let anchorRect = target.rect;
+  try {
+    const live = target.range.getBoundingClientRect();
+    if (live && (live.width || live.height)) anchorRect = live;
+  } catch {
+    /* detached range — keep the captured rect */
+  }
+  const pos = computePos(anchorRect, panelH);
 
   const run = async (instructionOverride?: string) => {
     if (!profile) {
@@ -141,6 +176,7 @@ export function SelectionChat() {
       <AnimatePresence>
       <motion.div
         key="selchat"
+        ref={panelRef}
         initial={{ opacity: 0, y: 8, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 8, scale: 0.97 }}
@@ -331,23 +367,25 @@ export function SelectionChat() {
   }
 }
 
-function computePos(rect: DOMRect) {
+function computePos(rect: DOMRect, panelH: number) {
   const gap = 12;
   const pad = 12;
   const width = Math.min(440, window.innerWidth * 0.92);
-  const estimatedH = Math.min(460, window.innerHeight - pad * 2);
+  // Cap to viewport; the popup itself caps at max-h-[calc(100vh-24px)].
+  const h = Math.min(panelH || 320, window.innerHeight - pad * 2);
   const spaceAbove = rect.top - pad;
   const spaceBelow = window.innerHeight - rect.bottom - pad;
-  const placeTop = spaceAbove >= Math.min(220, estimatedH) || spaceAbove > spaceBelow;
-  let left = rect.left + rect.width / 2;
-  left = clamp(left, width / 2 + pad, window.innerWidth - width / 2 - pad);
+  const placeTop = spaceAbove >= h + gap || spaceAbove > spaceBelow;
+  const left = clamp(rect.left + rect.width / 2, width / 2 + pad, window.innerWidth - width / 2 - pad);
   let top: number;
   let transform: string;
   if (placeTop) {
-    top = clamp(rect.top - gap, estimatedH + pad, window.innerHeight - pad);
+    // Anchored by its bottom edge (translateY -100%): keep top >= h + pad so
+    // the visible top edge never goes above the viewport.
+    top = clamp(rect.top - gap, h + pad, window.innerHeight - pad);
     transform = "translate(-50%, -100%)";
   } else {
-    top = clamp(rect.bottom + gap, pad, window.innerHeight - estimatedH - pad);
+    top = clamp(rect.bottom + gap, pad, Math.max(pad, window.innerHeight - h - pad));
     transform = "translate(-50%, 0)";
   }
   return { left, top, transform, flip: !placeTop };
