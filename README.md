@@ -1,6 +1,6 @@
 # WoRe
 
-WoRe is a local-first document editor for Windows, built with Tauri, React, and TypeScript. It supports DOCX, PDF, Markdown, HTML, and plain text, with an assistant panel for document-aware AI workflows.
+WoRe is a local-first document editor for Windows, built with Tauri, React, and TypeScript. It supports DOCX, PDF, PowerPoint (PPTX), Markdown, HTML, and plain text, with an assistant panel for document-aware AI workflows.
 
 The application is designed for users who want to work with documents locally while connecting to their own AI provider or local model server.
 
@@ -33,8 +33,9 @@ This is the main known document-fidelity issue that needs future work.
 
 - Local-first document storage using IndexedDB
 - Windows desktop app via Tauri 2
-- Import DOCX, PDF, Markdown, HTML, and text files
+- Import DOCX, PDF, PowerPoint (PPTX/PPT), Markdown, HTML, and text files
 - Export to DOCX, PDF print, Markdown, HTML, and text
+- PowerPoint viewer with slide thumbnails, speaker notes, a fullscreen presenter mode on a chosen monitor, and an AI assistant that can summarize, outline, and draft notes
 - Word-style editing toolbar with formatting, tables, links, images, callouts, and text boxes
 - DOCX preview mode using a visual Word renderer
 - PDF preview and PDF-to-DOCX conversion path
@@ -116,6 +117,7 @@ src-tauri/target/release/bundle/nsis/
 src/
   components/         Shared UI components
   editor/             Editor page, toolbar, AI panel, selection assistant
+  presentation/       PowerPoint viewer, presenter window, presentation AI panel
   lib/                AI client, document conversion, storage, utilities
   pages/              Start page
   types/              Local type declarations

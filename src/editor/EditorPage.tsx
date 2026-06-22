@@ -91,7 +91,7 @@ import { ImageGenDialog } from "./ImageGenDialog";
 import { ReferencePanel } from "./ReferencePanel";
 import { FindBar } from "./FindBar";
 
-const ACCEPT = ".md,.markdown,.txt,.html,.htm,.docx,.pdf";
+const ACCEPT = ".md,.markdown,.txt,.html,.htm,.docx,.pdf,.pptx,.ppt";
 const PDF_EDIT_NOTICE_SNOOZE_KEY = "wore.pdfEditNotice.snoozeUntil";
 const PDF_NOTICE_SNOOZE_MS = {
   "1h": 60 * 60 * 1000,
@@ -1452,6 +1452,7 @@ function FormatChip({ format }: { format: StoredDoc["format"] }) {
     pdf: { label: "PDF", cls: "text-destructive" },
     html: { label: "HTML", cls: "text-success" },
     txt: { label: "TXT", cls: "" },
+    pptx: { label: "PPTX", cls: "text-accent-strong" },
   };
   const m = map[format] ?? map.txt;
   return <Badge variant="outline" className={cn("uppercase", m.cls)}>{m.label}</Badge>;

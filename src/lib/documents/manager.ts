@@ -6,6 +6,7 @@ import { docxToHtml, docxToText, htmlToDocx } from "./docx";
 import { extractPdfText } from "./pdf";
 import { pdfToDocx } from "./convert";
 import { sanitizeHtml, sanitizeDocxImportHtml, wrapStandaloneHtml, escapeHtml, htmlToPlainText } from "./html";
+import { parsePptx, savePptxSlides, deletePptxSlides } from "./pptx";
 
 export interface StoredDoc {
   id: string;
@@ -42,6 +43,7 @@ export async function setSourceBytes(id: string, bytes: ArrayBuffer): Promise<vo
 export async function deleteDoc(id: string): Promise<void> {
   await idbDel(contentKey(id));
   await idbDel(sourceKey(id));
+  await deletePptxSlides(id);
 }
 
 export function newDoc(
@@ -98,6 +100,17 @@ export async function readDocumentTextFromPath(path: string): Promise<{ title: s
   } else if (ext === "docx") {
     const text = await docxToText(buf.slice(0));
     html = text ? `<p>${escapeHtml(text).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>` : sanitizeDocxImportHtml(await docxToHtml(buf.slice(0)));
+  } else if (ext === "pptx" || ext === "ppt") {
+    let parsed: Awaited<ReturnType<typeof parsePptx>>;
+    try {
+      parsed = await parsePptx(buf.slice(0));
+    } catch (e) {
+      if (ext === "ppt") {
+        throw new Error("This .ppt file is not a PPTX package. Please save/export it as .pptx first.");
+      }
+      throw e;
+    }
+    html = `<h1>${escapeHtml(parsed.title)}</h1>` + parsed.slides.map((s) => `<h2>${escapeHtml(s.title)}</h2><p>${escapeHtml(s.notes || "")}</p>`).join("");
   } else if (ext === "pdf") {
     const { pages } = await extractPdfText(buf.slice(0));
     html = pages
@@ -156,6 +169,27 @@ export async function importFile(
     const doc = newDoc(format, title, contentHtml);
     await saveDoc(doc);
     await setSourceBytes(doc.id, sourceBytes);
+    return { doc, recent: toRecent(doc, file.size, hasSource) };
+  } else if (ext === "pptx" || ext === "ppt") {
+    format = "pptx";
+    const buf = await file.arrayBuffer();
+    const sourceBytes = buf.slice(0);
+    let parsed: Awaited<ReturnType<typeof parsePptx>>;
+    try {
+      parsed = await parsePptx(sourceBytes);
+    } catch (e) {
+      if (ext === "ppt") {
+        throw new Error("This .ppt file is not a PPTX package. Please save/export it as .pptx first.");
+      }
+      throw e;
+    }
+    const docTitle = parsed.title && parsed.title !== "Presentation" ? parsed.title : title;
+    contentHtml = `<h1>${escapeHtml(parsed.title || docTitle)}</h1><p>${parsed.slides.length} slide${parsed.slides.length > 1 ? "s" : ""}</p>`;
+    hasSource = true;
+    const doc = newDoc(format, docTitle, contentHtml);
+    await saveDoc(doc);
+    await setSourceBytes(doc.id, sourceBytes);
+    await savePptxSlides(doc.id, parsed);
     return { doc, recent: toRecent(doc, file.size, hasSource) };
   } else if (ext === "pdf") {
     format = "pdf";

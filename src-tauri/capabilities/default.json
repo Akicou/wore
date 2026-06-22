@@ -1,9 +1,15 @@
 {
   "identifier": "default",
   "description": "Default capabilities for the WoRe main window.",
-  "windows": ["main"],
+  "windows": ["main", "*"],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-create",
+    "core:window:allow-close",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
     {
       "identifier": "http:default",
       "allow": [

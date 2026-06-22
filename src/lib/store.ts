@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import type { AIProfile } from "./ai";
 import { PROFILE_PRESETS } from "./ai";
 
-export type DocFormat = "md" | "docx" | "pdf" | "html" | "txt";
+export type DocFormat = "md" | "docx" | "pdf" | "html" | "txt" | "pptx";
 export type ThemeMode = "light" | "dark" | "system";
 
 export interface EditorKeybindings {

@@ -83,7 +83,7 @@ struct EnvKeyResult {
 /// could read arbitrary files (SSH keys, `.env`, credentials). Restricting to
 /// document types keeps the open/import features working while removing that.
 static ALLOWED_DOC_EXTS: &[&str] = &[
-    "md", "markdown", "txt", "text", "html", "htm", "docx", "doc", "pdf", "rtf", "odt",
+    "md", "markdown", "txt", "text", "html", "htm", "docx", "doc", "pdf", "pptx", "ppt", "rtf", "odt",
 ];
 
 fn document_ext(path: &std::path::Path) -> String {

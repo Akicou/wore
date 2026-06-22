@@ -11,6 +11,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Presentation,
   Settings2,
   Upload,
   X,
@@ -41,7 +42,7 @@ import { newDoc, saveDoc, importFile, deleteDoc } from "@/lib/documents/manager"
 import { starterMarkdown, markdownToHtml } from "@/lib/documents/markdown";
 import { formatBytes, timeAgo, cn } from "@/lib/utils";
 
-const ACCEPT = ".md,.markdown,.txt,.html,.htm,.docx,.pdf";
+const ACCEPT = ".md,.markdown,.txt,.html,.htm,.docx,.pdf,.pptx,.ppt";
 
 export function StartPage() {
   const navigate = useNavigate();
@@ -57,9 +58,10 @@ export function StartPage() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const openDoc = useCallback(
-    (id: string) => {
-      touchRecent(id);
-      navigate(`/editor/${id}`);
+    (doc: { id: string; format: DocFormat }) => {
+      touchRecent(doc.id);
+      if (doc.format === "pptx") navigate(`/presentation/${doc.id}`);
+      else navigate(`/editor/${doc.id}`);
     },
     [navigate, touchRecent]
   );
@@ -73,7 +75,7 @@ export function StartPage() {
           const { doc, recent } = await importFile(file);
           await saveDoc(doc);
           upsertRecent(recent);
-          openDoc(doc.id);
+          openDoc(doc);
         }
       } catch (e) {
         toast.error("Could not open file", { description: (e as Error).message });
@@ -134,7 +136,7 @@ export function StartPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.06, ease: [0.22, 1, 0.36, 1] as const }}
-          className="mt-12 grid w-full gap-3 sm:grid-cols-3"
+          className="mt-12 grid w-full grid-cols-2 gap-3 sm:grid-cols-4"
         >
           <ActionButton icon={FilePlus2} label="New" onClick={() => setNewOpen(true)} />
           <ActionButton icon={FolderOpen} label="Open" onClick={() => fileInput.current?.click()} />
@@ -144,6 +146,17 @@ export function StartPage() {
             onClick={() => {
               if (fileInput.current) {
                 fileInput.current.accept = ".pdf";
+                fileInput.current.click();
+                fileInput.current.accept = ACCEPT;
+              }
+            }}
+          />
+          <ActionButton
+            icon={Presentation}
+            label="Import PowerPoint"
+            onClick={() => {
+              if (fileInput.current) {
+                fileInput.current.accept = ".pptx,.ppt";
                 fileInput.current.click();
                 fileInput.current.accept = ACCEPT;
               }
@@ -169,7 +182,7 @@ export function StartPage() {
                 <RecentRow
                   key={d.id}
                   doc={d}
-                  onOpen={() => openDoc(d.id)}
+                  onOpen={() => openDoc(d)}
                   onRemove={async () => {
                     await deleteDoc(d.id);
                     removeRecent(d.id);
@@ -187,7 +200,7 @@ export function StartPage() {
           transition={{ duration: 0.4, delay: 0.22 }}
           className="mt-auto pt-12 text-[11px] text-muted-foreground"
         >
-          v0.5.3 · Local-first
+          v0.5.5 · Local-first
         </motion.footer>
       </main>
 
@@ -220,7 +233,7 @@ export function StartPage() {
             size: new Blob([html]).size,
           });
           setNewOpen(false);
-          openDoc(doc.id);
+          openDoc(doc);
         }}
       />
 
@@ -232,7 +245,7 @@ export function StartPage() {
           <div className="rounded-2xl border-2 border-dashed border-accent bg-card px-12 py-10 text-center shadow-2xl">
             <Upload className="mx-auto size-10 text-accent" />
             <p className="mt-3 font-medium">Drop to open</p>
-            <p className="text-xs text-muted-foreground">PDF · DOCX · MD · HTML · TXT</p>
+            <p className="text-xs text-muted-foreground">PDF · DOCX · PPTX/PPT · MD · HTML · TXT</p>
           </div>
         </div>
       )}
@@ -320,6 +333,7 @@ function FormatIcon({ format }: { format: DocFormat }) {
     pdf: FileText,
     html: FileText,
     txt: FileText,
+    pptx: Presentation,
   } as const;
   const Icon = map[format] ?? FileText;
   return (

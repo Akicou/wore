@@ -6,6 +6,8 @@ import { initThemeWatcher, ensureProfilesExist } from "@/lib/store";
 import { writeError, writeLog } from "@/lib/log";
 import { StartPage } from "@/pages/StartPage";
 import { EditorPage } from "@/editor/EditorPage";
+import { PresentationPage } from "@/presentation/PresentationPage";
+import { PresentWindow } from "@/presentation/PresentWindow";
 
 export default function App() {
   useEffect(() => {
@@ -37,6 +39,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<StartPage />} />
           <Route path="/editor/:id" element={<EditorPage />} />
+          <Route path="/presentation/:id" element={<PresentationPage />} />
+          <Route path="/present/:id" element={<PresentWindow />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </HashRouter>
