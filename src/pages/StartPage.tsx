@@ -200,7 +200,7 @@ export function StartPage() {
           transition={{ duration: 0.4, delay: 0.22 }}
           className="mt-auto pt-12 text-[11px] text-muted-foreground"
         >
-          v0.5.5 · Local-first
+          v0.5.6 · Local-first
         </motion.footer>
       </main>
 
